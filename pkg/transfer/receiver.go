@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
@@ -21,18 +22,25 @@ func NewReceiver() *Receiver {
 
 func (s *Receiver) Connect(host, port, network string) error {
 	address := fmt.Sprintf("%s:%s", host, port)
+	server, err := net.ResolveTCPAddr(network, address)
+	if err != nil {
+		return fmt.Errorf("Failed to resolve the address %s: %w\n", address, err)
+	}
 
-	conn, err := net.Dial(network, address)
+	conn, err := net.DialTCP(network, nil, server)
 	if err != nil {
 		return fmt.Errorf("Failed to dial the server: %w\n", err)
 	}
 	defer conn.Close()
 
+	start := time.Now()
 	err = handleIncomingRequest(conn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to handle request: %s\n", err)
 		return err
 	}
+
+	fmt.Println(time.Since(start))
 
 	// response := make([]byte, 100)
 	// conn.Read(response)
@@ -42,7 +50,7 @@ func (s *Receiver) Connect(host, port, network string) error {
 	return nil
 }
 
-func handleIncomingRequest(conn net.Conn) error {
+func handleIncomingRequest(conn *net.TCPConn) error {
 	headerBuffer := make([]byte, protocol.HEADER_MAX_SIZE)
 
 	_, err := conn.Read(headerBuffer)
@@ -59,7 +67,6 @@ func handleIncomingRequest(conn net.Conn) error {
 
 	file, err := CreateDestFile(RECEIVED_DIRECTORY, header.FileName)
 	defer file.Close()
-	defer conn.Close()
 
 	err = ReceiveFileByChunks(conn, header, file)
 	if err != nil {
@@ -97,28 +104,32 @@ func CreateDestFile(dir, filename string) (*os.File, error) {
 	return file, nil
 }
 
-func ReceiveFileByChunks(conn net.Conn, header *protocol.Header, file *os.File) error {
-	dataBuffer := make([]byte, protocol.DATA_MAX_SIZE)
+func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.File) error {
+	chunkBuffer := make([]byte, protocol.CHUNK_SIZE)
 	var chunk *protocol.Chunk
 
 	for i := 0; i < int(header.Reps); i++ {
-		_, err := conn.Read(dataBuffer)
-		if err != nil {
+		_, err := io.ReadFull(conn, chunkBuffer)
+		if err != nil && err != io.EOF {
 			return fmt.Errorf("failed to read data chunk: %w\n", err)
 		}
 
-		chunk, err = protocol.DeserializeChunk(dataBuffer)
+		chunk, err = protocol.DeserializeChunk(chunkBuffer)
 		if err != nil {
 			return fmt.Errorf("failed to deserialize chunk: %w\n", err)
 		}
 
-		conn.Write([]byte(fmt.Sprintf("chunk %d received", chunk.SequenceNumber)))
+		if _, err := conn.Write([]byte{1}); err != nil {
+			return fmt.Errorf("failed to send acknowledgment: %w", err)
+		}
+
+		fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
 
 		n, err := file.Write(chunk.Data)
 		if err != nil {
 			return fmt.Errorf("failed to write the data to the file: %w\n", err)
 		}
-		fmt.Printf("%d bytes written", n)
+		fmt.Printf("%d bytes written\n", n)
 	}
 
 	return nil

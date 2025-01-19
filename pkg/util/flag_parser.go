@@ -3,6 +3,7 @@ package util
 import (
 	"flag"
 	"fmt"
+	"os"
 )
 
 type FlagConfig struct {
@@ -23,8 +24,14 @@ func ParseFlags() (*FlagConfig, error) {
 		return nil, fmt.Errorf("unknown mode: '%s'\n\t--mode have to be 'send' or 'receive'\n", *mode)
 	}
 
-	if *mode == "send" && *file == "" {
-		return nil, fmt.Errorf("--mode send have to come with a file\n")
+	if *mode == "send" {
+		if *file == "" {
+			return nil, fmt.Errorf("--mode send have to come with a file\n")
+		}
+
+		if _, err := os.Stat(*file); os.IsNotExist(err) {
+			return nil, fmt.Errorf("%s: no such file or directory", *file)
+		}
 	}
 
 	config := &FlagConfig{Mode: *mode}

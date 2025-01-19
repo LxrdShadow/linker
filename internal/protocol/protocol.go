@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -12,7 +13,7 @@ import (
 
 const (
 	PROTOCOL_VERSION    = 1
-	CHUNK_MIN_SIZE      = 12
+	CHUNK_MIN_SIZE      = 4 + 8 // 4 bytes for SequenceNumber, 8 bytes for DataLength
 	CHUNK_SIZE          = 65536 // 64 KB
 	DATA_MAX_SIZE       = CHUNK_SIZE - CHUNK_MIN_SIZE
 	MAX_FILENAME_LENGTH = 255
@@ -164,6 +165,8 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 		return nil, errors.InvalidChunkSize
 	}
 
+	// fmt.Println(binary.BigEndian.Uint64(data[4:12]))
+
 	reader := bytes.NewReader(data)
 	var chunk Chunk
 
@@ -176,14 +179,16 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 	if err := binary.Read(reader, binary.BigEndian, &chunk.DataLength); err != nil {
 		return nil, fmt.Errorf("failed to read chunk data length: %w\n", err)
 	}
+	// fmt.Println("length:", chunk.DataLength)
+	// fmt.Println("data:", len(chunk.Data))
 
 	// Data
-	if uint64(len(data)) < chunk.DataLength + CHUNK_MIN_SIZE {
-		return nil, fmt.Errorf("not enough data to read the chunk data")
+	if uint64(len(data)) < uint64(chunk.DataLength+CHUNK_MIN_SIZE) {
+		return nil, fmt.Errorf("not enough data to read the chunk data: got %d want %d", len(data), chunk.DataLength+CHUNK_MIN_SIZE)
 	}
 	chunk.Data = make([]byte, chunk.DataLength)
 
-	if err := binary.Read(reader, binary.BigEndian, &chunk.Data); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &chunk.Data); err != nil && err != io.EOF {
 		return nil, fmt.Errorf("failed to read chunk data: %w\n", err)
 	}
 

@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 
@@ -38,13 +39,13 @@ func (s *Sender) Listen() error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to accept connection: %s", err.Error())
 		}
+		defer conn.Close()
 
 		go s.SendSingleFile(conn)
 	}
 }
 
 func (s *Sender) SendSingleFile(conn net.Conn) {
-	defer conn.Close()
 	response := make([]byte, 100)
 	// conn.Read(response)
 
@@ -56,6 +57,7 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 		fmt.Printf("Error: failed to open file: %v\n", err.Error())
 		return
 	}
+	defer file.Close()
 
 	header, err := protocol.PrepareFileHeader(file)
 	if err != nil {
@@ -77,43 +79,58 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 	}
 	fmt.Println(string(response))
 
-	err = SendFileByChunks(file, header, conn)
+	err = SendFileByChunks(conn, file, header)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err.Error())
 		return
 	}
 
 	_, err = conn.Read(response)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		fmt.Printf("Error: failed to read response: %v\n", err.Error())
 	}
 	fmt.Println(string(response))
 }
 
-func SendFileByChunks(file *os.File, header *protocol.Header, conn net.Conn) error {
+func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
 	chunk := new(protocol.Chunk)
 	dataBuffer := make([]byte, protocol.DATA_MAX_SIZE)
-	response := make([]byte, 100)
+	// response := make([]byte, 100)
 
 	for i := 0; i < int(header.Reps); i++ {
-		n, _ := file.ReadAt(dataBuffer, int64(i*protocol.DATA_MAX_SIZE))
+		n, _ := file.ReadAt(dataBuffer, int64(i*len(dataBuffer)))
 
 		chunk.SequenceNumber = uint32(i)
 		chunk.DataLength = uint64(n)
 		chunk.Data = dataBuffer
+		fmt.Println("length:", n)
+		fmt.Println("data:", len(chunk.Data))
 
 		chunkBuffer, err := chunk.Serialize()
 		if err != nil {
 			return fmt.Errorf("failed to serialize chunk %d: %w", chunk.SequenceNumber, err)
 		}
 
-		conn.Write(chunkBuffer)
-
-		_, err = conn.Read(response)
+		_, err = conn.Write(chunkBuffer)
 		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
+			return fmt.Errorf("failed to write chunk %d: %w", chunk.SequenceNumber, err)
 		}
-		fmt.Println(string(response))
+		fmt.Printf("Sent chunk %d. Waiting for response...\n", chunk.SequenceNumber)
+
+		// n, err = conn.Read(response)
+		// if err != nil && err != io.EOF && n != 0 {
+		// 	return fmt.Errorf("failed to read response: %w", err)
+		// }
+		// fmt.Println(string(response[:n]))
+		// fmt.Println(n)
+		ack := make([]byte, 1)
+		if _, err := conn.Read(ack); err != nil && err != io.EOF {
+			return fmt.Errorf("failed to receive acknowledgment: %w", err)
+		}
+
+		if ack[0] != 1 {
+			return fmt.Errorf("invalid acknowledgment received")
+		}
 	}
 
 	return nil
