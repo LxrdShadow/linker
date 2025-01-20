@@ -103,8 +103,6 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		chunk.SequenceNumber = uint32(i)
 		chunk.DataLength = uint64(n)
 		chunk.Data = dataBuffer
-		fmt.Println("length:", n)
-		fmt.Println("data:", len(chunk.Data))
 
 		chunkBuffer, err := chunk.Serialize()
 		if err != nil {
@@ -115,7 +113,7 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		if err != nil {
 			return fmt.Errorf("failed to write chunk %d: %w", chunk.SequenceNumber, err)
 		}
-		fmt.Printf("Sent chunk %d. Waiting for response...\n", chunk.SequenceNumber)
+		fmt.Printf("Sent chunk %d. Waiting for response...\t", chunk.SequenceNumber)
 
 		// n, err = conn.Read(response)
 		// if err != nil && err != io.EOF && n != 0 {
@@ -131,6 +129,8 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		if ack[0] != 1 {
 			return fmt.Errorf("invalid acknowledgment received")
 		}
+
+		fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
 	}
 
 	return nil

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/LxrdShadow/linker/internal/protocol"
+	"github.com/LxrdShadow/linker/pkg/progress"
+	"github.com/LxrdShadow/linker/pkg/util"
 )
 
 const (
@@ -34,7 +36,7 @@ func (s *Receiver) Connect(host, port, network string) error {
 	defer conn.Close()
 
 	start := time.Now()
-	err = handleIncomingRequest(conn)
+	err = handleIncomingData(conn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to handle request: %s\n", err)
 		return err
@@ -50,7 +52,7 @@ func (s *Receiver) Connect(host, port, network string) error {
 	return nil
 }
 
-func handleIncomingRequest(conn *net.TCPConn) error {
+func handleIncomingData(conn *net.TCPConn) error {
 	headerBuffer := make([]byte, protocol.HEADER_MAX_SIZE)
 
 	_, err := conn.Read(headerBuffer)
@@ -108,8 +110,13 @@ func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.Fi
 	chunkBuffer := make([]byte, protocol.CHUNK_SIZE)
 	var chunk *protocol.Chunk
 
+	unit, denom := util.ByteDecodeUnit(header.FileSize)
+
+	bar := progress.NewProgressBar(header.FileSize, '=', denom, header.FileName, unit)
+	bar.Render()
+
 	for i := 0; i < int(header.Reps); i++ {
-		_, err := io.ReadFull(conn, chunkBuffer)
+		n, err := io.ReadFull(conn, chunkBuffer)
 		if err != nil && err != io.EOF {
 			return fmt.Errorf("failed to read data chunk: %w\n", err)
 		}
@@ -122,15 +129,18 @@ func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.Fi
 		if _, err := conn.Write([]byte{1}); err != nil {
 			return fmt.Errorf("failed to send acknowledgment: %w", err)
 		}
+		// time.Sleep(50 * time.Millisecond)
 
-		fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
+		// fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
 
-		n, err := file.Write(chunk.Data)
+		bar.AppendUpdate(uint64(n))
+		_, err = file.Write(chunk.Data)
 		if err != nil {
 			return fmt.Errorf("failed to write the data to the file: %w\n", err)
 		}
-		fmt.Printf("%d bytes written\n", n)
+		// fmt.Printf("%d bytes written\n", n)
 	}
+	bar.Finish()
 
 	return nil
 }
