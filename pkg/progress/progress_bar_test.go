@@ -10,7 +10,7 @@ func TestUpdateProgressBar(t *testing.T) {
 
 		assertEqual(t, progress.total, uint64(1000), "total")
 		assertEqual(t, progress.current, uint64(0), "current value")
-		assertEqual(t, progress.percentage, uint8(0), "percentage")
+		assertEqual(t, progress.percent, uint8(0), "percentage")
 		assertEqual(t, progress.char, '#', "character")
 	})
 
@@ -20,10 +20,10 @@ func TestUpdateProgressBar(t *testing.T) {
 
 		assertEqual(t, progress.total, uint64(1000), "total")
 		assertEqual(t, progress.current, uint64(200), "current value")
-		assertEqual(t, progress.percentage, uint8(20), "percentage")
+		assertEqual(t, progress.percent, uint8(20), "percentage")
 
 		progress.NewValueUpdate(300)
-		assertEqual(t, progress.percentage, uint8(30), "percentage")
+		assertEqual(t, progress.percent, uint8(30), "percentage")
 	})
 
 	t.Run("progress update from added value", func(t *testing.T) {
@@ -32,11 +32,11 @@ func TestUpdateProgressBar(t *testing.T) {
 
 		assertEqual(t, progress.total, uint64(1000), "total")
 		assertEqual(t, progress.current, uint64(200), "current value")
-		assertEqual(t, progress.percentage, uint8(20), "percentage")
+		assertEqual(t, progress.percent, uint8(20), "percentage")
 
 		progress.AppendUpdate(100)
 		assertEqual(t, progress.current, uint64(300), "current value")
-		assertEqual(t, progress.percentage, uint8(30), "percentage")
+		assertEqual(t, progress.percent, uint8(30), "percentage")
 	})
 }
 

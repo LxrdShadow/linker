@@ -92,7 +92,7 @@ func (progress *ProgressBar) progress() string {
 func (progress *ProgressBar) fSpeed() string {
 	elapsed := time.Since(progress.start).Seconds()
 	if elapsed == 0 {
-		return fmt.Sprintf("%7.2f%s/s", 0, progress.unit)
+		return fmt.Sprintf("%7.2f%s/s", 0.0, progress.unit)
 	}
 	progress.speed = progress.divideByDenom(progress.current) / float32(elapsed)
 

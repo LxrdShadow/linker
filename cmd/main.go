@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	// "os"
 
 	// "github.com/LxrdShadow/linker/internal/protocol"
 	"github.com/LxrdShadow/linker/pkg/transfer"
@@ -11,15 +10,15 @@ import (
 )
 
 func main() {
-	flagConfig, err := util.ParseFlags()
+	flagConfig, err := util.ParseFlags(os.Args)
 	if err != nil {
 		fmt.Printf("Error: %v", err)
-		return
+		os.Exit(1)
 	}
 
 	switch flagConfig.Mode {
 	case "send":
-		sender := transfer.NewSender("localhost", "3000", "tcp", flagConfig.FilePath)
+		sender := transfer.NewSender(flagConfig.Host, flagConfig.Port, "tcp", flagConfig.FilePath)
 		err := sender.Listen()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
@@ -27,6 +26,9 @@ func main() {
 
 	case "receive":
 		receiver := transfer.NewReceiver()
-		receiver.Connect("localhost", "3000", "tcp")
+		err := receiver.Connect(flagConfig.Host, flagConfig.Port, "tcp")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		}
 	}
 }
