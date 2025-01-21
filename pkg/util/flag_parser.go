@@ -3,8 +3,10 @@ package util
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -21,6 +23,9 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("expected '%s' or '%s' subcommands\n", SEND_FLAG, RECEIVE_FLAG)
 	}
+
+	flag.Usage = appUsage
+	flag.Parse()
 
 	sendCmd := flag.NewFlagSet(SEND_FLAG, flag.ExitOnError)
 	sendFile := sendCmd.String("file", "", "Path of the file to send")
@@ -64,33 +69,42 @@ func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 
 	var hostConf string
 	var portConf string
+	var addrConf string
 	var err error
 
-	if (*host == "" || *port == "") && *addr == "" {
-		return nil, fmt.Errorf("'%s' have to come with an address (host:port)\n", RECEIVE_FLAG)
-	} else if (*host != "" || *port != "") && *addr != "" {
+	if (!isEmptyString(*host) || !isEmptyString(*port)) && !isEmptyString(*addr) {
 		return nil, fmt.Errorf("'%s' have to only come with 'addr' (host:port) or 'host' and 'port' \n", RECEIVE_FLAG)
-	} else if *addr != "" {
+	} else if !isEmptyString(*addr) {
 		hostConf, portConf, err = getHostPortFromAddr(*addr)
+		addrConf = *addr
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse address: %w", err)
 		}
-	} else if *host != "" && *port != "" {
-		hostConf = *host
-		portConf = *port
-	} else if *host == "" && *port == "" {
-		conf, err := getLocalHostAddress()
-		if err != nil {
-			return nil, err
+	} else if isEmptyString(*addr) {
+		if *host != "" {
+			hostConf = *host
+		} else {
+			conf, err := getLocalHostAddress()
+			if err != nil {
+				return nil, err
+			}
+			hostConf = conf
+
 		}
-		hostConf = conf
-		portConf = "6969"
+
+		if *port != "" {
+			portConf = *port
+		} else {
+			portConf = strconv.Itoa(rand.Intn(64000) + 1000)
+		}
+
+		addrConf = getAddrFromHostPort(hostConf, portConf)
 	}
 
 	return &FlagConfig{
 		Mode:     SEND_FLAG,
 		FilePath: *file,
-		Address:  getAddrFromHostPort(*host, *port),
+		Address:  addrConf,
 		Host:     hostConf,
 		Port:     portConf,
 	}, nil
@@ -99,29 +113,34 @@ func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 func getReceiveConfig(addr, host, port *string) (*FlagConfig, error) {
 	var hostConf string
 	var portConf string
+	var addrConf string
 	var err error
 
-	if (*host == "" || *port == "") && *addr == "" {
-		return nil, fmt.Errorf("'%s' have to come with an address (host:port)\n", RECEIVE_FLAG)
-	} else if (*host != "" || *port != "") && *addr != "" {
-		return nil, fmt.Errorf("'%s' have to only come with 'addr' (host:port) or 'host' and 'port' \n", RECEIVE_FLAG)
-	} else if *addr != "" {
+	if (isEmptyString(*host) || isEmptyString(*port)) && isEmptyString(*addr) {
+		return nil, fmt.Errorf("'%s' have to come with an address (-addr host:port)\n", RECEIVE_FLAG)
+	} else if (!isEmptyString(*host) || !isEmptyString(*port)) && !isEmptyString(*addr) {
+		return nil, fmt.Errorf("'%s' have to only come with '-addr' (host:port) or '-host' and '-port' \n", RECEIVE_FLAG)
+	} else if !isEmptyString(*addr) {
+		addrConf = *addr
 		hostConf, portConf, err = getHostPortFromAddr(*addr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse address: %w", err)
 		}
+	} else {
+		hostConf = *host
+		portConf = *port
+		addrConf = getAddrFromHostPort(hostConf, portConf)
 	}
 
 	return &FlagConfig{
 		Mode:    RECEIVE_FLAG,
-		Address: getAddrFromHostPort(*host, *port),
+		Address: addrConf,
 		Host:    hostConf,
 		Port:    portConf,
 	}, err
 }
 
 func getLocalHostAddress() (string, error) {
-	var host string
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "", fmt.Errorf("failed to get host IP address: %w\n", err)
@@ -130,11 +149,11 @@ func getLocalHostAddress() (string, error) {
 	for _, addr := range addrs {
 		ipNet, ok := addr.(*net.IPNet)
 		if ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
-			host = ipNet.IP.String()
+			return ipNet.IP.String(), nil
 		}
 	}
 
-	return host, nil
+	return "", nil
 }
 
 func getAddrFromHostPort(host, port string) string {
@@ -150,4 +169,42 @@ func getHostPortFromAddr(addr string) (string, string, error) {
 	port := strings.Split(addr, ":")[1]
 
 	return host, port, nil
+}
+
+func isEmptyString(str string) bool {
+	return str == ""
+}
+
+func appUsage() {
+	intro := `lnkr (linker) is a simple file transfer program.
+
+Usage:
+	lnkr <command> [command flags]`
+
+	fmt.Fprintln(os.Stderr, intro)
+	fmt.Fprintln(os.Stderr, "\nCommands:")
+	fmt.Fprintf(os.Stderr, "\t%s\n", SEND_FLAG)
+	fmt.Fprintln(os.Stderr, "\t\tcreates a server to send files")
+	fmt.Fprintf(os.Stderr, "\t%s\n", RECEIVE_FLAG)
+	fmt.Fprintln(os.Stderr, "\t\tjoin a send server to receive the files")
+
+	// fmt.Fprintln(os.Stderr, "\nCommand Flags:")
+	// fmt.Fprintf(os.Stderr, "\t--file  -file\n")
+	// fmt.Fprintln(os.Stderr, "\t\tpath of the file to send")
+	// fmt.Fprintf(os.Stderr, "\t--addr  -addr\n")
+	// fmt.Fprintln(os.Stderr, "\t\taddres for the server (host:port)")
+	// fmt.Fprintf(os.Stderr, "\t--host  -host\n")
+	// fmt.Fprintln(os.Stderr, "\t\thost IP for the server")
+	// fmt.Fprintf(os.Stderr, "\t--port  -port\n")
+	// fmt.Fprintln(os.Stderr, "\t\tport for the server")
+
+	// fmt.Fprintln(os.Stderr, "\nExample:")
+	// fmt.Fprintln(os.Stderr, "\tlnkr send -file test.txt -addr 192.168.1.1:9090")
+	// fmt.Fprintln(os.Stderr, "\tlnkr send --file=test.txt --host=192.168.1.1 --port=9090")
+	// fmt.Fprintln(os.Stderr, "\tlnkr receive -host 192.168.1.1 -port 9090")
+	// fmt.Fprintln(os.Stderr, "\tlnkr receive --addr=192.168.1.1:9090")
+
+	flag.PrintDefaults()
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "Run `lnkr <command> -h` to get help for a specific command\n\n")
 }

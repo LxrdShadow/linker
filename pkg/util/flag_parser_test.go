@@ -1,30 +1,70 @@
 package util
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
-func TestParseFlags(t *testing.T) {
-	t.Run("error when there's no subcommands provided", func(t *testing.T) {
-		args := []string{"lnkr"}
-		want := "expected 'send' or 'receive' subcommands\n"
+type testCase struct {
+	args   []string
+	output *FlagConfig
+}
 
-		_, err := ParseFlags(args)
-		assertEqual(t, err.Error(), want, "error value")
+func TestParseSendFlags(t *testing.T) {
+	_, _ = os.Create("test.txt")
+	defer os.Remove("test.txt")
+
+	cases := []testCase{
+		{
+			args:   []string{"lnkr", "send", "-file", "test.txt", "-addr", "192.168.1.1:6969"},
+			output: &FlagConfig{Mode: "send", FilePath: "test.txt", Address: "192.168.1.1:6969", Host: "192.168.1.1", Port: "6969"},
+		},
+		{
+			args:   []string{"lnkr", "send", "-file", "test.txt", "-host", "192.168.1.1", "-port", "6969"},
+			output: &FlagConfig{Mode: "send", FilePath: "test.txt", Address: "192.168.1.1:6969", Host: "192.168.1.1", Port: "6969"},
+		},
+	}
+
+	t.Run("send with the possible args", func(t *testing.T) {
+		for _, test := range cases {
+			out, err := ParseFlags(test.args)
+			if err != nil {
+				t.Errorf("%s", err.Error())
+			}
+
+			assertEqual(t, out.Mode, test.output.Mode, "mode")
+			assertEqual(t, out.FilePath, test.output.FilePath, "file path")
+			assertEqual(t, out.Address, test.output.Address, "address")
+			assertEqual(t, out.Host, test.output.Host, "host")
+			assertEqual(t, out.Port, test.output.Port, "port")
+		}
 	})
+}
 
-	t.Run("error when there's no addr or host+port on receive", func(t *testing.T) {
-		args := []string{"lnkr", "receive"}
-		want := "'receive' have to come with an address (host:port)\n"
+func TestParseReceiveFlags(t *testing.T) {
+	cases := []testCase{
+		{
+			args:   []string{"lnkr", "receive", "-addr", "192.168.1.1:6969"},
+			output: &FlagConfig{Mode: "receive", Address: "192.168.1.1:6969", Host: "192.168.1.1", Port: "6969"},
+		},
+		{
+			args:   []string{"lnkr", "receive", "-host", "192.168.1.1", "-port", "6969"},
+			output: &FlagConfig{Mode: "receive", Address: "192.168.1.1:6969", Host: "192.168.1.1", Port: "6969"},
+		},
+	}
 
-		_, err := ParseFlags(args)
-		assertEqual(t, err.Error(), want, "error value")
-	})
+	t.Run("receive with the possible args", func(t *testing.T) {
+		for _, test := range cases {
+			out, err := ParseFlags(test.args)
+			if err != nil {
+				t.Errorf("%s", err.Error())
+			}
 
-	t.Run("error when we provide both addr and host or port on receive", func(t *testing.T) {
-		args := []string{"lnkr", "receive", "-addr", "172.17.0.1:6969", "-host", "127.0.0.1"}
-		want := "'receive' have to only come with 'addr' (host:port) or 'host' and 'port' \n"
-
-		_, err := ParseFlags(args)
-		assertEqual(t, err.Error(), want, "error value")
+			assertEqual(t, out.Mode, test.output.Mode, "mode")
+			assertEqual(t, out.Address, test.output.Address, "address")
+			assertEqual(t, out.Host, test.output.Host, "host")
+			assertEqual(t, out.Port, test.output.Port, "port")
+		}
 	})
 }
 

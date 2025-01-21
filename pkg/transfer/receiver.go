@@ -67,6 +67,10 @@ func handleIncomingData(conn *net.TCPConn) error {
 
 	conn.Write([]byte("header received"))
 
+	if header.Version != protocol.PROTOCOL_VERSION {
+		return fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, protocol.PROTOCOL_VERSION)
+	}
+
 	file, err := CreateDestFile(RECEIVED_DIRECTORY, header.FileName)
 	defer file.Close()
 

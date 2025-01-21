@@ -10,7 +10,6 @@ type ProgressBar struct {
 	percent               uint8
 	char                  rune
 	prefix, repr, unit    string
-	speed                 float32
 	start                 time.Time
 }
 
@@ -40,7 +39,7 @@ func (progress *ProgressBar) AppendUpdate(value uint64) {
 }
 
 func (progress *ProgressBar) Render() {
-	fmt.Printf("\r%s %s %s %s %s", progress.prefix, progress.representation(), progress.percentage(), progress.progress(), progress.fSpeed())
+	fmt.Printf("\r%s %s %s %s %s", progress.prefix, progress.representation(), progress.percentage(), progress.progress(), progress.speed())
 }
 
 func (progress *ProgressBar) Finish() {
@@ -89,12 +88,20 @@ func (progress *ProgressBar) progress() string {
 	return fmt.Sprintf("%8.2f%s/%.2f%s", progress.divideByDenom(progress.current), progress.unit, progress.divideByDenom(progress.total), progress.unit)
 }
 
-func (progress *ProgressBar) fSpeed() string {
+func (progress *ProgressBar) speed() string {
 	elapsed := time.Since(progress.start).Seconds()
 	if elapsed == 0 {
 		return fmt.Sprintf("%7.2f%s/s", 0.0, progress.unit)
 	}
-	progress.speed = progress.divideByDenom(progress.current) / float32(elapsed)
+	speed := float32(progress.current) / float32(elapsed)
 
-	return fmt.Sprintf("%7.2f%s/s", progress.speed, progress.unit)
+	units := []string{"B", "KB", "MB", "GB"}
+	unitIdx := 0
+
+	for speed >= 1000 && unitIdx < len(units)-1 {
+		speed /= 1000
+		unitIdx++
+	}
+
+	return fmt.Sprintf("%7.2f%s/s", speed, units[unitIdx])
 }

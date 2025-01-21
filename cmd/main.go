@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	// "github.com/LxrdShadow/linker/internal/protocol"
 	"github.com/LxrdShadow/linker/pkg/transfer"
 	"github.com/LxrdShadow/linker/pkg/util"
 )
