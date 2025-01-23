@@ -3,6 +3,8 @@ package progress
 import (
 	"fmt"
 	"time"
+
+	"github.com/LxrdShadow/linker/pkg/color"
 )
 
 type ProgressBar struct {
@@ -77,11 +79,35 @@ func (progress *ProgressBar) divideByDenom(value uint64) float32 {
 }
 
 func (progress *ProgressBar) percentage() string {
-	return fmt.Sprintf("%3d%%", progress.percent)
+	var percentColor int
+
+	if progress.percent <= 33 {
+		percentColor = color.RED
+	} else if progress.percent <= 66 {
+		percentColor = color.YELLOW
+	} else if progress.percent <= 99 {
+		percentColor = color.CYAN
+	} else {
+		percentColor = color.GREEN
+	}
+
+	return color.Sprint(percentColor, fmt.Sprintf("%3d%%", progress.percent))
 }
 
 func (progress *ProgressBar) representation() string {
-	return fmt.Sprintf("[%-50s]", progress.repr)
+	var reprColor int
+
+	if progress.percent <= 33 {
+		reprColor = color.RED
+	} else if progress.percent <= 66 {
+		reprColor = color.YELLOW
+	} else if progress.percent <= 99 {
+		reprColor = color.CYAN
+	} else {
+		reprColor = color.GREEN
+	}
+
+	return color.Sprint(reprColor, fmt.Sprintf("[%-50s]", progress.repr))
 }
 
 func (progress *ProgressBar) progress() string {
@@ -103,5 +129,5 @@ func (progress *ProgressBar) speed() string {
 		unitIdx++
 	}
 
-	return fmt.Sprintf("%7.2f%s/s", speed, units[unitIdx])
+	return color.Sprintf(color.GRAY, "%7.2f%s/s", speed, units[unitIdx])
 }

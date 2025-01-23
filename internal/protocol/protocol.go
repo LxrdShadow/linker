@@ -36,6 +36,7 @@ type Chunk struct {
 	Data           []byte
 }
 
+// Prepare the header with the informations about the file and the protocol
 func PrepareFileHeader(file *os.File) (*Header, error) {
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -56,6 +57,7 @@ func PrepareFileHeader(file *os.File) (*Header, error) {
 	return header, nil
 }
 
+// Encode the header to byte representation
 func (h *Header) Serialize() ([]byte, error) {
 	if len(h.FileName) > MAX_FILENAME_LENGTH {
 		return nil, fmt.Errorf("filename exceeds maximum length of %d bytes\n", MAX_FILENAME_LENGTH)
@@ -96,6 +98,7 @@ func (h *Header) Serialize() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
+// Decode a byte representation of a header to a Header struct
 func DeserializeHeader(data []byte) (*Header, error) {
 	if len(data) < HEADER_MIN_SIZE {
 		return nil, errors.InvalidHeaderSize
@@ -143,6 +146,7 @@ func DeserializeHeader(data []byte) (*Header, error) {
 	return &header, nil
 }
 
+// Encode the chunk to byte representation
 func (ch *Chunk) Serialize() ([]byte, error) {
 	buff := new(bytes.Buffer)
 	if err := binary.Write(buff, binary.BigEndian, ch.SequenceNumber); err != nil {
@@ -160,6 +164,7 @@ func (ch *Chunk) Serialize() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
+// Decode a byte representation of a header to a Header struct
 func DeserializeChunk(data []byte) (*Chunk, error) {
 	if len(data) < CHUNK_MIN_SIZE {
 		return nil, errors.InvalidChunkSize

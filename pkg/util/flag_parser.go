@@ -18,6 +18,7 @@ const (
 	CONNECT_COMMAND = "receive"
 )
 
+// Parse the flags given by the user
 func ParseFlags(args []string) (*FlagConfig, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("expected '%s' or '%s' subcommands\n", HOST_COMMAND, CONNECT_COMMAND)
@@ -57,6 +58,7 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	return config, nil
 }
 
+// Get the configurations for a send command
 func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 	if *file == "" {
 		return nil, fmt.Errorf("'%s' have to come with a file\n", HOST_COMMAND)
@@ -109,6 +111,7 @@ func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 	}, nil
 }
 
+// Get the configurations for a receive command
 func getReceiveConfig(addr, host, port *string) (*FlagConfig, error) {
 	var hostConf string
 	var portConf string
@@ -139,6 +142,7 @@ func getReceiveConfig(addr, host, port *string) (*FlagConfig, error) {
 	}, err
 }
 
+// Get the local interface address for the current computer
 func getLocalHostAddress() (string, error) {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -155,10 +159,12 @@ func getLocalHostAddress() (string, error) {
 	return "", nil
 }
 
+// check if a string is empty (for readability)
 func isEmptyString(str string) bool {
 	return str == ""
 }
 
+// Custom usage message for the app
 func appUsage() {
 	intro := `lnkr (linker) is a simple file transfer program.
 

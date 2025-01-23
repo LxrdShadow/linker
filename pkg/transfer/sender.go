@@ -18,6 +18,7 @@ type Sender struct {
 	File                string
 }
 
+// Creates a new sender
 func NewSender(host, port, network string, file string) *Sender {
 	sender := &Sender{
 		Host:    host,
@@ -29,6 +30,7 @@ func NewSender(host, port, network string, file string) *Sender {
 	return sender
 }
 
+// Listens on the sender's host IP and port
 func (s *Sender) Listen() error {
 	address := util.GetAddrFromHostPort(s.Host, s.Port)
 	listener, err := net.Listen(s.Network, address)
@@ -49,6 +51,7 @@ func (s *Sender) Listen() error {
 	}
 }
 
+// Send the single file specified in the app's flags
 func (s *Sender) SendSingleFile(conn net.Conn) {
 	response := make([]byte, 100)
 

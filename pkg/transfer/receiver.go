@@ -114,6 +114,7 @@ func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.Fi
 	unit, denom := util.ByteDecodeUnit(header.FileSize)
 
 	bar := progress.NewProgressBar(header.FileSize, '=', denom, header.FileName, unit)
+	fmt.Println()
 	bar.Render()
 
 	for i := 0; i < int(header.Reps); i++ {
@@ -138,6 +139,7 @@ func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.Fi
 		}
 	}
 	bar.Finish()
+	fmt.Println()
 
 	return nil
 }
