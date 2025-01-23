@@ -1,12 +1,16 @@
 package transfer
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 
 	"github.com/LxrdShadow/linker/internal/protocol"
+	"github.com/LxrdShadow/linker/pkg/color"
+	"github.com/LxrdShadow/linker/pkg/log"
+	"github.com/LxrdShadow/linker/pkg/util"
 )
 
 type Sender struct {
@@ -26,18 +30,18 @@ func NewSender(host, port, network string, file string) *Sender {
 }
 
 func (s *Sender) Listen() error {
-	address := fmt.Sprintf("%s:%s", s.Host, s.Port)
+	address := util.GetAddrFromHostPort(s.Host, s.Port)
 	listener, err := net.Listen(s.Network, address)
 	if err != nil {
-		return fmt.Errorf("Failed to listen on %s: %w", address, err)
+		return fmt.Errorf("Failed to listen on %s: %w", color.Sprint(color.RED, address), err)
 	}
 
-	fmt.Printf("Listening on %s\n", address)
+	fmt.Printf("Listening on: %s\n", color.Sprint(color.GREEN, address))
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to accept connection: %s", err.Error())
+			log.Errorf("Failed to accept connection: %s", err.Error())
 		}
 		defer conn.Close()
 
@@ -47,27 +51,25 @@ func (s *Sender) Listen() error {
 
 func (s *Sender) SendSingleFile(conn net.Conn) {
 	response := make([]byte, 100)
-	// conn.Read(response)
 
-	// fmt.Println(string(response))
 	fmt.Println("Connected with", conn.RemoteAddr().String())
 
 	file, err := os.OpenFile(s.File, os.O_RDONLY, 0755)
 	if err != nil {
-		fmt.Printf("Error: failed to open file: %v\n", err.Error())
+		log.Errorf("failed to open file: %s\n", err.Error())
 		return
 	}
 	defer file.Close()
 
 	header, err := protocol.PrepareFileHeader(file)
 	if err != nil {
-		fmt.Printf("Error: %s\n", err.Error())
+		log.Error(err.Error())
 		return
 	}
 
 	headerBuffer, err := header.Serialize()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err.Error())
+		log.Error(err.Error())
 		return
 	}
 
@@ -75,27 +77,26 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 
 	_, err = conn.Read(response)
 	if err != nil {
-		fmt.Printf("Error: failed to read response: %v\n", err.Error())
+		log.Errorf("failed to read response: %s\n", err.Error())
 	}
 	fmt.Println(string(response))
 
 	err = SendFileByChunks(conn, file, header)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err.Error())
+		log.Errorf("Error: %s\n", err.Error())
 		return
 	}
 
 	_, err = conn.Read(response)
-	if err != nil && err != io.EOF {
-		fmt.Printf("Error: failed to read response: %v\n", err.Error())
+	if err != nil && errors.Is(err, io.EOF) {
+		log.Errorf("failed to read response: %s\n", err.Error())
 	}
-	fmt.Println(string(response))
+	log.Success(string(response))
 }
 
 func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
 	chunk := new(protocol.Chunk)
 	dataBuffer := make([]byte, protocol.DATA_MAX_SIZE)
-	// response := make([]byte, 100)
 
 	for i := 0; i < int(header.Reps); i++ {
 		n, _ := file.ReadAt(dataBuffer, int64(i*len(dataBuffer)))
@@ -115,14 +116,9 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		}
 		fmt.Printf("Sent chunk %d. Waiting for response...\t", chunk.SequenceNumber)
 
-		// n, err = conn.Read(response)
-		// if err != nil && err != io.EOF && n != 0 {
-		// 	return fmt.Errorf("failed to read response: %w", err)
-		// }
-		// fmt.Println(string(response[:n]))
-		// fmt.Println(n)
 		ack := make([]byte, 1)
-		if _, err := conn.Read(ack); err != nil && err != io.EOF {
+		_, err = conn.Read(ack)
+		if err != nil && errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to receive acknowledgment: %w", err)
 		}
 

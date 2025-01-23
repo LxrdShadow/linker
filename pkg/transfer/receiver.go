@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LxrdShadow/linker/internal/protocol"
+	"github.com/LxrdShadow/linker/pkg/color"
 	"github.com/LxrdShadow/linker/pkg/progress"
 	"github.com/LxrdShadow/linker/pkg/util"
 )
@@ -26,7 +28,7 @@ func (s *Receiver) Connect(host, port, network string) error {
 	address := fmt.Sprintf("%s:%s", host, port)
 	server, err := net.ResolveTCPAddr(network, address)
 	if err != nil {
-		return fmt.Errorf("Failed to resolve the address %s: %w\n", address, err)
+		return fmt.Errorf("Failed to resolve the address %s: %w\n", color.Sprint(color.RED, address), err)
 	}
 
 	conn, err := net.DialTCP(network, nil, server)
@@ -43,11 +45,6 @@ func (s *Receiver) Connect(host, port, network string) error {
 	}
 
 	fmt.Println(time.Since(start))
-
-	// response := make([]byte, 100)
-	// conn.Read(response)
-
-	// fmt.Println(string(response))
 
 	return nil
 }
@@ -121,11 +118,11 @@ func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.Fi
 
 	for i := 0; i < int(header.Reps); i++ {
 		n, err := io.ReadFull(conn, chunkBuffer)
-		if err != nil && err != io.EOF {
+		if err != nil && errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to read data chunk: %w\n", err)
 		}
 
-		chunk, err = protocol.DeserializeChunk(chunkBuffer)
+		chunk, err = protocol.DeserializeChunk(chunkBuffer[:n])
 		if err != nil {
 			return fmt.Errorf("failed to deserialize chunk: %w\n", err)
 		}
@@ -133,16 +130,12 @@ func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.Fi
 		if _, err := conn.Write([]byte{1}); err != nil {
 			return fmt.Errorf("failed to send acknowledgment: %w", err)
 		}
-		// time.Sleep(50 * time.Millisecond)
-
-		// fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
 
 		bar.AppendUpdate(uint64(n))
 		_, err = file.Write(chunk.Data)
 		if err != nil {
 			return fmt.Errorf("failed to write the data to the file: %w\n", err)
 		}
-		// fmt.Printf("%d bytes written\n", n)
 	}
 	bar.Finish()
 

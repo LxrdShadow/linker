@@ -1,5 +1,10 @@
 package util
 
+import (
+	"fmt"
+	"strings"
+)
+
 func ByteDecodeUnit(num uint64) (string, uint64) {
 	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
 	base := uint64(1)
@@ -14,4 +19,19 @@ func ByteDecodeUnit(num uint64) (string, uint64) {
 	}
 
 	return unit, base
+}
+
+func GetAddrFromHostPort(host, port string) string {
+	return fmt.Sprintf("%s:%s", host, port)
+}
+
+func GetHostPortFromAddr(addr string) (string, string, error) {
+	if len(strings.Split(addr, ":")) != 2 {
+		return "", "", fmt.Errorf("%s: wrong address format, it should be host:port\n", addr)
+	}
+
+	host := strings.Split(addr, ":")[0]
+	port := strings.Split(addr, ":")[1]
+
+	return host, port, nil
 }

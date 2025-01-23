@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 )
 
 type FlagConfig struct {
@@ -15,25 +14,25 @@ type FlagConfig struct {
 }
 
 const (
-	SEND_FLAG    = "send"
-	RECEIVE_FLAG = "receive"
+	HOST_COMMAND    = "send"
+	CONNECT_COMMAND = "receive"
 )
 
 func ParseFlags(args []string) (*FlagConfig, error) {
 	if len(args) < 2 {
-		return nil, fmt.Errorf("expected '%s' or '%s' subcommands\n", SEND_FLAG, RECEIVE_FLAG)
+		return nil, fmt.Errorf("expected '%s' or '%s' subcommands\n", HOST_COMMAND, CONNECT_COMMAND)
 	}
 
 	flag.Usage = appUsage
 	flag.Parse()
 
-	sendCmd := flag.NewFlagSet(SEND_FLAG, flag.ExitOnError)
+	sendCmd := flag.NewFlagSet(HOST_COMMAND, flag.ExitOnError)
 	sendFile := sendCmd.String("file", "", "Path of the file to send")
 	sendAddr := sendCmd.String("addr", "", "Address for the server (host:port)")
 	sendHost := sendCmd.String("host", "", "Host IP for the server")
 	sendPort := sendCmd.String("port", "", "Port for the server")
 
-	receiveCmd := flag.NewFlagSet(RECEIVE_FLAG, flag.ExitOnError)
+	receiveCmd := flag.NewFlagSet(CONNECT_COMMAND, flag.ExitOnError)
 	receiveAddr := receiveCmd.String("addr", "", "Address of the server (host:port)")
 	receiveHost := receiveCmd.String("host", "", "Host IP of the server")
 	receivePort := receiveCmd.String("port", "", "Port of the server")
@@ -42,11 +41,11 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	var err error
 
 	switch args[1] {
-	case SEND_FLAG:
+	case HOST_COMMAND:
 		sendCmd.Parse(args[2:])
 		config, err = getSendConfig(sendFile, sendAddr, sendHost, sendPort)
 
-	case RECEIVE_FLAG:
+	case CONNECT_COMMAND:
 		receiveCmd.Parse(args[2:])
 		config, err = getReceiveConfig(receiveAddr, receiveHost, receivePort)
 	}
@@ -60,7 +59,7 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 
 func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 	if *file == "" {
-		return nil, fmt.Errorf("'%s' have to come with a file\n", SEND_FLAG)
+		return nil, fmt.Errorf("'%s' have to come with a file\n", HOST_COMMAND)
 	}
 
 	if _, err := os.Stat(*file); os.IsNotExist(err) {
@@ -73,9 +72,9 @@ func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 	var err error
 
 	if (!isEmptyString(*host) || !isEmptyString(*port)) && !isEmptyString(*addr) {
-		return nil, fmt.Errorf("'%s' have to only come with 'addr' (host:port) or 'host' and 'port' \n", RECEIVE_FLAG)
+		return nil, fmt.Errorf("'%s' have to only come with 'addr' (host:port) or 'host' and 'port' \n", CONNECT_COMMAND)
 	} else if !isEmptyString(*addr) {
-		hostConf, portConf, err = getHostPortFromAddr(*addr)
+		hostConf, portConf, err = GetHostPortFromAddr(*addr)
 		addrConf = *addr
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse address: %w", err)
@@ -98,11 +97,11 @@ func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 			portConf = strconv.Itoa(rand.Intn(64000) + 1000)
 		}
 
-		addrConf = getAddrFromHostPort(hostConf, portConf)
+		addrConf = GetAddrFromHostPort(hostConf, portConf)
 	}
 
 	return &FlagConfig{
-		Mode:     SEND_FLAG,
+		Mode:     HOST_COMMAND,
 		FilePath: *file,
 		Address:  addrConf,
 		Host:     hostConf,
@@ -117,23 +116,23 @@ func getReceiveConfig(addr, host, port *string) (*FlagConfig, error) {
 	var err error
 
 	if (isEmptyString(*host) || isEmptyString(*port)) && isEmptyString(*addr) {
-		return nil, fmt.Errorf("'%s' have to come with an address (-addr host:port)\n", RECEIVE_FLAG)
+		return nil, fmt.Errorf("'%s' have to come with an address (-addr host:port)\n", CONNECT_COMMAND)
 	} else if (!isEmptyString(*host) || !isEmptyString(*port)) && !isEmptyString(*addr) {
-		return nil, fmt.Errorf("'%s' have to only come with '-addr' (host:port) or '-host' and '-port' \n", RECEIVE_FLAG)
+		return nil, fmt.Errorf("'%s' have to only come with '-addr' (host:port) or '-host' and '-port' \n", CONNECT_COMMAND)
 	} else if !isEmptyString(*addr) {
 		addrConf = *addr
-		hostConf, portConf, err = getHostPortFromAddr(*addr)
+		hostConf, portConf, err = GetHostPortFromAddr(*addr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse address: %w", err)
 		}
 	} else {
 		hostConf = *host
 		portConf = *port
-		addrConf = getAddrFromHostPort(hostConf, portConf)
+		addrConf = GetAddrFromHostPort(hostConf, portConf)
 	}
 
 	return &FlagConfig{
-		Mode:    RECEIVE_FLAG,
+		Mode:    CONNECT_COMMAND,
 		Address: addrConf,
 		Host:    hostConf,
 		Port:    portConf,
@@ -156,21 +155,6 @@ func getLocalHostAddress() (string, error) {
 	return "", nil
 }
 
-func getAddrFromHostPort(host, port string) string {
-	return fmt.Sprintf("%s:%s", host, port)
-}
-
-func getHostPortFromAddr(addr string) (string, string, error) {
-	if len(strings.Split(addr, ":")) != 2 {
-		return "", "", fmt.Errorf("%s: wrong address format, it should be host:port\n", addr)
-	}
-
-	host := strings.Split(addr, ":")[0]
-	port := strings.Split(addr, ":")[1]
-
-	return host, port, nil
-}
-
 func isEmptyString(str string) bool {
 	return str == ""
 }
@@ -183,9 +167,9 @@ Usage:
 
 	fmt.Fprintln(os.Stderr, intro)
 	fmt.Fprintln(os.Stderr, "\nCommands:")
-	fmt.Fprintf(os.Stderr, "\t%s\n", SEND_FLAG)
+	fmt.Fprintf(os.Stderr, "\t%s\n", HOST_COMMAND)
 	fmt.Fprintln(os.Stderr, "\t\tcreates a server to send files")
-	fmt.Fprintf(os.Stderr, "\t%s\n", RECEIVE_FLAG)
+	fmt.Fprintf(os.Stderr, "\t%s\n", CONNECT_COMMAND)
 	fmt.Fprintln(os.Stderr, "\t\tjoin a send server to receive the files")
 
 	// fmt.Fprintln(os.Stderr, "\nCommand Flags:")
