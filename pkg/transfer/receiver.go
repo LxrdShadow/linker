@@ -20,10 +20,12 @@ const (
 
 type Receiver struct{}
 
+// Creates a new receiver
 func NewReceiver() *Receiver {
 	return &Receiver{}
 }
 
+// Connect to a send server
 func (s *Receiver) Connect(host, port, network string) error {
 	address := fmt.Sprintf("%s:%s", host, port)
 	server, err := net.ResolveTCPAddr(network, address)
@@ -62,7 +64,7 @@ func handleIncomingData(conn *net.TCPConn) error {
 		return fmt.Errorf("failed to deserialize header: %w\n", err)
 	}
 
-	conn.Write([]byte("header received"))
+	conn.Write([]byte{1})
 
 	if header.Version != protocol.PROTOCOL_VERSION {
 		return fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, protocol.PROTOCOL_VERSION)
@@ -71,7 +73,7 @@ func handleIncomingData(conn *net.TCPConn) error {
 	file, err := CreateDestFile(RECEIVED_DIRECTORY, header.FileName)
 	defer file.Close()
 
-	err = ReceiveFileByChunks(conn, header, file)
+	err = ReceiveFileByChunks(conn, file, header)
 	if err != nil {
 		return err
 	}
@@ -107,7 +109,7 @@ func CreateDestFile(dir, filename string) (*os.File, error) {
 	return file, nil
 }
 
-func ReceiveFileByChunks(conn *net.TCPConn, header *protocol.Header, file *os.File) error {
+func ReceiveFileByChunks(conn *net.TCPConn, file *os.File, header *protocol.Header) error {
 	chunkBuffer := make([]byte, protocol.CHUNK_SIZE)
 	var chunk *protocol.Chunk
 

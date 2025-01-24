@@ -10,6 +10,7 @@ import (
 	"github.com/LxrdShadow/linker/internal/protocol"
 	"github.com/LxrdShadow/linker/pkg/color"
 	"github.com/LxrdShadow/linker/pkg/log"
+	"github.com/LxrdShadow/linker/pkg/progress"
 	"github.com/LxrdShadow/linker/pkg/util"
 )
 
@@ -78,15 +79,19 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 
 	conn.Write(headerBuffer)
 
-	_, err = conn.Read(response)
-	if err != nil {
-		log.Errorf("failed to read response: %s\n", err.Error())
+	ack := make([]byte, 1)
+	_, err = conn.Read(ack)
+	if err != nil && errors.Is(err, io.EOF) {
+		log.Errorf("failed to receive acknowledgment: %w", err)
 	}
-	fmt.Println(string(response))
+
+	if ack[0] != 1 {
+		log.Error("invalid acknowledgment received")
+	}
 
 	err = SendFileByChunks(conn, file, header)
 	if err != nil {
-		log.Errorf("Error: %s\n", err.Error())
+		log.Error(err.Error())
 		return
 	}
 
@@ -94,12 +99,21 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 	if err != nil && errors.Is(err, io.EOF) {
 		log.Errorf("failed to read response: %s\n", err.Error())
 	}
-	log.Success(string(response))
+
+	log.Successf("%s\n", string(response))
 }
 
 func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
 	chunk := new(protocol.Chunk)
 	dataBuffer := make([]byte, protocol.DATA_MAX_SIZE)
+
+	unit, denom := util.ByteDecodeUnit(header.FileSize)
+
+	bar := progress.NewProgressBar(header.FileSize, '=', denom, header.FileName, unit)
+	fmt.Println()
+	bar.Render()
+
+	ack := make([]byte, 1)
 
 	for i := 0; i < int(header.Reps); i++ {
 		n, _ := file.ReadAt(dataBuffer, int64(i*len(dataBuffer)))
@@ -117,9 +131,8 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		if err != nil {
 			return fmt.Errorf("failed to write chunk %d: %w", chunk.SequenceNumber, err)
 		}
-		fmt.Printf("Sent chunk %d. Waiting for response...\t", chunk.SequenceNumber)
+		// fmt.Printf("Sent chunk %d. Waiting for response...\t", chunk.SequenceNumber)
 
-		ack := make([]byte, 1)
 		_, err = conn.Read(ack)
 		if err != nil && errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to receive acknowledgment: %w", err)
@@ -129,8 +142,12 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 			return fmt.Errorf("invalid acknowledgment received")
 		}
 
-		fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
+		bar.AppendUpdate(uint64(n))
+
+		// fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
 	}
+	bar.Finish()
+	fmt.Println()
 
 	return nil
 }
