@@ -71,27 +71,15 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 		return
 	}
 
-	headerBuffer, err := header.Serialize()
+	err = SendHeader(conn, header)
 	if err != nil {
-		log.Error(err.Error())
+		log.Errorf("failed to send header: %s", err.Error())
 		return
-	}
-
-	conn.Write(headerBuffer)
-
-	ack := make([]byte, 1)
-	_, err = conn.Read(ack)
-	if err != nil && errors.Is(err, io.EOF) {
-		log.Errorf("failed to receive acknowledgment: %w", err)
-	}
-
-	if ack[0] != 1 {
-		log.Error("invalid acknowledgment received")
 	}
 
 	err = SendFileByChunks(conn, file, header)
 	if err != nil {
-		log.Error(err.Error())
+		log.Errorf("failed to send file: %s", err.Error())
 		return
 	}
 
@@ -101,6 +89,28 @@ func (s *Sender) SendSingleFile(conn net.Conn) {
 	}
 
 	log.Successf("%s\n", string(response))
+}
+
+func SendHeader(conn net.Conn, header *protocol.Header) error {
+	headerBuffer, err := header.Serialize()
+	if err != nil {
+		log.Error(err.Error())
+		return err
+	}
+
+	conn.Write(headerBuffer)
+
+	ack := make([]byte, 1)
+	_, err = conn.Read(ack)
+	if err != nil && errors.Is(err, io.EOF) {
+		return fmt.Errorf("failed to receive acknowledgment: %w", err)
+	}
+
+	if ack[0] != 1 {
+		return fmt.Errorf("invalid acknowledgment received")
+	}
+
+	return nil
 }
 
 func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
@@ -131,7 +141,6 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		if err != nil {
 			return fmt.Errorf("failed to write chunk %d: %w", chunk.SequenceNumber, err)
 		}
-		// fmt.Printf("Sent chunk %d. Waiting for response...\t", chunk.SequenceNumber)
 
 		_, err = conn.Read(ack)
 		if err != nil && errors.Is(err, io.EOF) {
@@ -143,8 +152,6 @@ func SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) err
 		}
 
 		bar.AppendUpdate(uint64(n))
-
-		// fmt.Printf("Chunk %d received\n", chunk.SequenceNumber)
 	}
 	bar.Finish()
 	fmt.Println()

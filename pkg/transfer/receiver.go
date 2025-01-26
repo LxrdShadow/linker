@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/LxrdShadow/linker/internal/protocol"
-	"github.com/LxrdShadow/linker/pkg/color"
+	// "github.com/LxrdShadow/linker/pkg/color"
 	"github.com/LxrdShadow/linker/pkg/progress"
 	"github.com/LxrdShadow/linker/pkg/util"
 )
@@ -28,12 +28,12 @@ func NewReceiver() *Receiver {
 // Connect to a send server
 func (s *Receiver) Connect(host, port, network string) error {
 	address := fmt.Sprintf("%s:%s", host, port)
-	server, err := net.ResolveTCPAddr(network, address)
-	if err != nil {
-		return fmt.Errorf("Failed to resolve the address %s: %w\n", color.Sprint(color.RED, address), err)
-	}
+	// server, err := net.ResolveTCPAddr(network, address)
+	// if err != nil {
+	// 	return fmt.Errorf("Failed to resolve the address %s: %w\n", color.Sprint(color.RED, address), err)
+	// }
 
-	conn, err := net.DialTCP(network, nil, server)
+	conn, err := net.Dial(network, address)
 	if err != nil {
 		return fmt.Errorf("Failed to dial the server: %w\n", err)
 	}
@@ -51,7 +51,7 @@ func (s *Receiver) Connect(host, port, network string) error {
 	return nil
 }
 
-func handleIncomingData(conn *net.TCPConn) error {
+func handleIncomingData(conn net.Conn) error {
 	headerBuffer := make([]byte, protocol.HEADER_MAX_SIZE)
 
 	_, err := conn.Read(headerBuffer)
@@ -109,8 +109,8 @@ func CreateDestFile(dir, filename string) (*os.File, error) {
 	return file, nil
 }
 
-func ReceiveFileByChunks(conn *net.TCPConn, file *os.File, header *protocol.Header) error {
-	chunkBuffer := make([]byte, protocol.CHUNK_SIZE)
+func ReceiveFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
+	chunkBuffer := make([]byte, header.ChunkSize)
 	var chunk *protocol.Chunk
 
 	unit, denom := util.ByteDecodeUnit(header.FileSize)

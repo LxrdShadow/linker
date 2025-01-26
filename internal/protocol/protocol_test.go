@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -42,4 +43,40 @@ func TestPrepareFileHeader(t *testing.T) {
 			t.Errorf("Wrong Chunk Number: got %d want %d", header.Reps, 1)
 		}
 	})
+}
+
+func TestSerializeHeader(t *testing.T) {
+	header := &Header{
+		Version:        PROTOCOL_VERSION,
+		ChunkSize:      1024,
+		Reps:           10,
+		FileSize:       1024 * 10,
+		FileNameLength: 9,
+		FileName:       "hello.txt",
+	}
+
+	buff, _ := header.Serialize()
+	got, _ := DeserializeHeader(buff)
+
+	assertEqual(t, got, header)
+}
+
+func TestSerializeChunk(t *testing.T) {
+	chunk := &Chunk{
+		SequenceNumber: 2,
+		DataLength:     2,
+		Data:           []byte{byte(1), byte(2)},
+	}
+
+	buff, _ := chunk.Serialize()
+	got, _ := DeserializeChunk(buff)
+
+	assertEqual(t, got, chunk)
+}
+
+func assertEqual(t *testing.T, got any, want any) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("value mismatch: got %+v, want %+v", got, want)
+	}
 }
