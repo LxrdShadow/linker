@@ -8,17 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/LxrdShadow/linker/internal/config"
 	"github.com/LxrdShadow/linker/internal/errors"
-)
-
-const (
-	PROTOCOL_VERSION    = 1
-	CHUNK_MIN_SIZE      = 4 + 8 // 4 bytes for SequenceNumber, 8 bytes for DataLength
-	CHUNK_SIZE          = 65536 // 64 KB
-	DATA_MAX_SIZE       = CHUNK_SIZE - CHUNK_MIN_SIZE
-	MAX_FILENAME_LENGTH = 255
-	HEADER_MIN_SIZE     = 19                                    // 19 bytes without filename
-	HEADER_MAX_SIZE     = HEADER_MIN_SIZE + MAX_FILENAME_LENGTH // 274 bytes
 )
 
 type Header struct {
@@ -46,9 +37,9 @@ func PrepareFileHeader(file *os.File) (*Header, error) {
 	name := filepath.Base(file.Name())
 
 	header := &Header{
-		Version:        PROTOCOL_VERSION,
-		ChunkSize:      CHUNK_SIZE,
-		Reps:           uint32(size/CHUNK_SIZE) + 1,
+		Version:        config.PROTOCOL_VERSION,
+		ChunkSize:      config.CHUNK_SIZE,
+		Reps:           uint32(size/config.CHUNK_SIZE) + 1,
 		FileSize:       uint64(size),
 		FileNameLength: uint16(len(name)),
 		FileName:       name,
@@ -59,8 +50,8 @@ func PrepareFileHeader(file *os.File) (*Header, error) {
 
 // Encode the header to byte representation
 func (h *Header) Serialize() ([]byte, error) {
-	if len(h.FileName) > MAX_FILENAME_LENGTH {
-		return nil, fmt.Errorf("filename exceeds maximum length of %d bytes\n", MAX_FILENAME_LENGTH)
+	if len(h.FileName) > config.MAX_FILENAME_LENGTH {
+		return nil, fmt.Errorf("filename exceeds maximum length of %d bytes\n", config.MAX_FILENAME_LENGTH)
 	}
 
 	buff := new(bytes.Buffer)
@@ -100,7 +91,7 @@ func (h *Header) Serialize() ([]byte, error) {
 
 // Decode a byte representation of a header to a Header struct
 func DeserializeHeader(data []byte) (*Header, error) {
-	if len(data) < HEADER_MIN_SIZE {
+	if len(data) < config.HEADER_MIN_SIZE {
 		return nil, errors.InvalidHeaderSize
 	}
 
@@ -132,8 +123,8 @@ func DeserializeHeader(data []byte) (*Header, error) {
 		return nil, fmt.Errorf("failed to read filename length: %w\n", err)
 	}
 
-	if header.FileNameLength > MAX_FILENAME_LENGTH {
-		return nil, fmt.Errorf("filename exceeds maximum length of %d bytes\n", MAX_FILENAME_LENGTH)
+	if header.FileNameLength > config.MAX_FILENAME_LENGTH {
+		return nil, fmt.Errorf("filename exceeds maximum length of %d bytes\n", config.MAX_FILENAME_LENGTH)
 	}
 
 	// The actual name of the file
@@ -166,7 +157,7 @@ func (ch *Chunk) Serialize() ([]byte, error) {
 
 // Decode a byte representation of a header to a Header struct
 func DeserializeChunk(data []byte) (*Chunk, error) {
-	if len(data) < CHUNK_MIN_SIZE {
+	if len(data) < config.CHUNK_MIN_SIZE {
 		return nil, errors.InvalidChunkSize
 	}
 
@@ -188,8 +179,8 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 	// fmt.Println("data:", len(chunk.Data))
 
 	// Data
-	if uint64(len(data)) < uint64(chunk.DataLength+CHUNK_MIN_SIZE) {
-		return nil, fmt.Errorf("not enough data to read the chunk data: got %d want %d", len(data), chunk.DataLength+CHUNK_MIN_SIZE)
+	if uint64(len(data)) < uint64(chunk.DataLength+config.CHUNK_MIN_SIZE) {
+		return nil, fmt.Errorf("not enough data to read the chunk data: got %d want %d", len(data), chunk.DataLength+config.CHUNK_MIN_SIZE)
 	}
 	chunk.Data = make([]byte, chunk.DataLength)
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/LxrdShadow/linker/internal/config"
 )
 
 // Guys, I have no idea how to test this T_T
@@ -18,8 +20,8 @@ func TestPrepareFileHeader(t *testing.T) {
 	t.Run("prepare the headers for a test file", func(t *testing.T) {
 		header, _ := PrepareFileHeader(file)
 
-		if header.Version != PROTOCOL_VERSION {
-			t.Errorf("Version mismatch: got %d want %d", header.Version, PROTOCOL_VERSION)
+		if header.Version != config.PROTOCOL_VERSION {
+			t.Errorf("Version mismatch: got %d want %d", header.Version, config.PROTOCOL_VERSION)
 		}
 
 		if header.FileNameLength != 9 {
@@ -35,8 +37,8 @@ func TestPrepareFileHeader(t *testing.T) {
 			t.Errorf("Wrong size: got %d want %d", header.FileSize, uint64(info.Size()))
 		}
 
-		if header.ChunkSize != CHUNK_SIZE {
-			t.Errorf("Wrong chunk size: got %d want %d", header.ChunkSize, CHUNK_SIZE)
+		if header.ChunkSize != config.CHUNK_SIZE {
+			t.Errorf("Wrong chunk size: got %d want %d", header.ChunkSize, config.CHUNK_SIZE)
 		}
 
 		if header.Reps != 1 {
@@ -47,7 +49,7 @@ func TestPrepareFileHeader(t *testing.T) {
 
 func TestSerializeHeader(t *testing.T) {
 	header := &Header{
-		Version:        PROTOCOL_VERSION,
+		Version:        config.PROTOCOL_VERSION,
 		ChunkSize:      1024,
 		Reps:           10,
 		FileSize:       1024 * 10,

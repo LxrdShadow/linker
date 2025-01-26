@@ -1,90 +1,104 @@
 package transfer
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/LxrdShadow/linker/internal/config"
 	"github.com/LxrdShadow/linker/internal/protocol"
-	// "github.com/LxrdShadow/linker/pkg/color"
+	"github.com/LxrdShadow/linker/pkg/log"
 	"github.com/LxrdShadow/linker/pkg/progress"
 	"github.com/LxrdShadow/linker/pkg/util"
 )
 
-const (
-	RECEIVED_DIRECTORY = "./received/"
-)
-
-type Receiver struct{}
+type Receiver struct {
+	*Connection
+	ReceiveDir string
+}
 
 // Creates a new receiver
-func NewReceiver() *Receiver {
-	return &Receiver{}
+func NewReceiver(config *util.FlagConfig) *Receiver {
+	return &Receiver{
+		Connection: &Connection{
+			Host:    config.Host,
+			Port:    config.Port,
+			Network: config.Network,
+			Addr:    config.Addr,
+		},
+		ReceiveDir: config.ReceiveDir,
+	}
 }
 
 // Connect to a send server
-func (s *Receiver) Connect(host, port, network string) error {
-	address := fmt.Sprintf("%s:%s", host, port)
-	// server, err := net.ResolveTCPAddr(network, address)
-	// if err != nil {
-	// 	return fmt.Errorf("Failed to resolve the address %s: %w\n", color.Sprint(color.RED, address), err)
-	// }
-
-	conn, err := net.Dial(network, address)
+func (r *Receiver) Connect() error {
+	conn, err := net.Dial(r.Network, r.Addr)
 	if err != nil {
 		return fmt.Errorf("Failed to dial the server: %w\n", err)
 	}
 	defer conn.Close()
 
-	start := time.Now()
-	err = handleIncomingData(conn)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to handle request: %s\n", err)
-		return err
-	}
-
-	fmt.Println(time.Since(start))
-
-	return nil
-}
-
-func handleIncomingData(conn net.Conn) error {
-	headerBuffer := make([]byte, protocol.HEADER_MAX_SIZE)
-
-	_, err := conn.Read(headerBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to read header: %w\n", err)
-	}
-
-	header, err := protocol.DeserializeHeader(headerBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize header: %w\n", err)
-	}
-
-	conn.Write([]byte{1})
-
-	if header.Version != protocol.PROTOCOL_VERSION {
-		return fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, protocol.PROTOCOL_VERSION)
-	}
-
-	file, err := CreateDestFile(RECEIVED_DIRECTORY, header.FileName)
-	defer file.Close()
-
-	err = ReceiveFileByChunks(conn, file, header)
+	numEntries, err := r.ReadNumEntries(conn)
 	if err != nil {
 		return err
+	}
+
+	fmt.Println()
+	// Loop over the number of entries sent by the server
+	for range numEntries {
+		err = r.HandleIncomingData(conn, r.ReceiveDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to handle request: %s\n", err)
+			continue
+		}
 	}
 
 	time := time.Now().UTC().Format("Monday, 02-Jan-06 15:04:05 MST")
+	log.Success(time)
 	conn.Write([]byte(time))
 
 	return nil
 }
 
-func CreateDestFile(dir, filename string) (*os.File, error) {
+func (r *Receiver) ReadNumEntries(conn net.Conn) (uint8, error) {
+	numEntriesBuff := make([]byte, 1)
+	_, err := conn.Read(numEntriesBuff)
+	if err != nil {
+		return 0, fmt.Errorf("Failed to read the number of files: %w\n", err)
+	}
+
+	numEntries, _ := binary.Uvarint(numEntriesBuff)
+
+	if _, err := conn.Write([]byte{1}); err != nil {
+		return 0, fmt.Errorf("failed to send acknowledgment: %w", err)
+	}
+
+	return uint8(numEntries), nil
+}
+
+func (r *Receiver) HandleIncomingData(conn net.Conn, receiveDir string) error {
+	header, err := r.GetHeader(conn)
+	if err != nil {
+		return err
+	}
+
+	file, err := r.CreateDestFile(receiveDir, header.FileName)
+	defer file.Close()
+
+	err = r.ReceiveFileByChunks(conn, file, header)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *Receiver) CreateDestFile(dir, filename string) (*os.File, error) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		err = os.Mkdir(dir, 0755)
 		if err != nil {
@@ -93,14 +107,15 @@ func CreateDestFile(dir, filename string) (*os.File, error) {
 	}
 
 	var file *os.File
-	filePath := dir + filename
-	if _, err := os.Stat(RECEIVED_DIRECTORY + filename); os.IsNotExist(err) {
+	filePath := filepath.Join(dir, filename)
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		file, err = os.Create(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create file: %w\n", err)
+			return nil, fmt.Errorf("failed to create %s: %w\n", filePath, err)
 		}
 	} else {
-		file, err = os.OpenFile(filePath, os.O_WRONLY, 0755)
+		file, err = os.OpenFile(filePath, os.O_WRONLY, 0755) // 0755 is the file permission in octal
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file: %w\n", err)
 		}
@@ -109,29 +124,16 @@ func CreateDestFile(dir, filename string) (*os.File, error) {
 	return file, nil
 }
 
-func ReceiveFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
-	chunkBuffer := make([]byte, header.ChunkSize)
-	var chunk *protocol.Chunk
-
+func (r *Receiver) ReceiveFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
 	unit, denom := util.ByteDecodeUnit(header.FileSize)
 
 	bar := progress.NewProgressBar(header.FileSize, '=', denom, header.FileName, unit)
-	fmt.Println()
 	bar.Render()
 
 	for i := 0; i < int(header.Reps); i++ {
-		n, err := io.ReadFull(conn, chunkBuffer)
-		if err != nil && errors.Is(err, io.EOF) {
-			return fmt.Errorf("failed to read data chunk: %w\n", err)
-		}
-
-		chunk, err = protocol.DeserializeChunk(chunkBuffer[:n])
+		chunk, n, err := r.GetChunk(conn, header.ChunkSize)
 		if err != nil {
-			return fmt.Errorf("failed to deserialize chunk: %w\n", err)
-		}
-
-		if _, err := conn.Write([]byte{1}); err != nil {
-			return fmt.Errorf("failed to send acknowledgment: %w", err)
+			return err
 		}
 
 		bar.AppendUpdate(uint64(n))
@@ -144,4 +146,47 @@ func ReceiveFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) 
 	fmt.Println()
 
 	return nil
+}
+
+func (r *Receiver) GetHeader(conn net.Conn) (*protocol.Header, error) {
+	headerBuffer := make([]byte, config.HEADER_MAX_SIZE)
+
+	_, err := conn.Read(headerBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read header: %w\n", err)
+	}
+
+	header, err := protocol.DeserializeHeader(headerBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w\n", err)
+	}
+
+	if header.Version != config.PROTOCOL_VERSION {
+		return nil, fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, config.PROTOCOL_VERSION)
+	}
+
+	if _, err := conn.Write([]byte{1}); err != nil {
+		return nil, fmt.Errorf("failed to send acknowledgment: %w", err)
+	}
+
+	return header, nil
+}
+
+func (r *Receiver) GetChunk(conn net.Conn, size uint32) (*protocol.Chunk, int, error) {
+	chunkBuffer := make([]byte, size)
+	n, err := io.ReadFull(conn, chunkBuffer)
+	if err != nil && errors.Is(err, io.EOF) {
+		return nil, 0, fmt.Errorf("failed to read data chunk: %w\n", err)
+	}
+
+	chunk, err := protocol.DeserializeChunk(chunkBuffer[:n])
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to deserialize chunk: %w\n", err)
+	}
+
+	if _, err := conn.Write([]byte{1}); err != nil {
+		return nil, 0, fmt.Errorf("failed to send acknowledgment: %w", err)
+	}
+
+	return chunk, n, nil
 }

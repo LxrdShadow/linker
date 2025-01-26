@@ -17,15 +17,15 @@ func main() {
 
 	switch flagConfig.Mode {
 	case "send":
-		sender := transfer.NewSender(flagConfig.Host, flagConfig.Port, "tcp", flagConfig.FilePath)
+		sender := transfer.NewSender(flagConfig)
 		err := sender.Listen()
 		if err != nil {
 			log.Error(err.Error())
 		}
 
 	case "receive":
-		receiver := transfer.NewReceiver()
-		err := receiver.Connect(flagConfig.Host, flagConfig.Port, "tcp")
+		receiver := transfer.NewReceiver(flagConfig)
+		err := receiver.Connect()
 		if err != nil {
 			log.Error(err.Error())
 		}

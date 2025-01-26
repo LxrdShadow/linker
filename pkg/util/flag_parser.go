@@ -7,10 +7,13 @@ import (
 	"net"
 	"os"
 	"strconv"
+
+	"github.com/LxrdShadow/linker/internal/config"
 )
 
 type FlagConfig struct {
-	Mode, FilePath, Address, Host, Port string
+	Mode, Addr, Host, Port, Network, ReceiveDir string
+	Entries                                        []string
 }
 
 const (
@@ -28,7 +31,7 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	flag.Parse()
 
 	sendCmd := flag.NewFlagSet(HOST_COMMAND, flag.ExitOnError)
-	sendFile := sendCmd.String("file", "", "Path of the file to send")
+	// sendFile := sendCmd.String("file", "", "Path of the file to send")
 	sendAddr := sendCmd.String("addr", "", "Address for the server (host:port)")
 	sendHost := sendCmd.String("host", "", "Host IP for the server")
 	sendPort := sendCmd.String("port", "", "Port for the server")
@@ -37,6 +40,7 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	receiveAddr := receiveCmd.String("addr", "", "Address of the server (host:port)")
 	receiveHost := receiveCmd.String("host", "", "Host IP of the server")
 	receivePort := receiveCmd.String("port", "", "Port of the server")
+	receiveDir := receiveCmd.String("receive-dir", config.RECEIVE_DIRECTORY, "Directory to store the received files")
 
 	var config *FlagConfig
 	var err error
@@ -44,11 +48,11 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	switch args[1] {
 	case HOST_COMMAND:
 		sendCmd.Parse(args[2:])
-		config, err = getSendConfig(sendFile, sendAddr, sendHost, sendPort)
+		config, err = getSendConfig(sendCmd, sendAddr, sendHost, sendPort)
 
 	case CONNECT_COMMAND:
 		receiveCmd.Parse(args[2:])
-		config, err = getReceiveConfig(receiveAddr, receiveHost, receivePort)
+		config, err = getReceiveConfig(receiveAddr, receiveHost, receivePort, receiveDir)
 	}
 
 	if err != nil {
@@ -59,13 +63,17 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 }
 
 // Get the configurations for a send command
-func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
-	if *file == "" {
+func getSendConfig(sendCmd *flag.FlagSet, addr, host, port *string) (*FlagConfig, error) {
+	entries := sendCmd.Args()
+
+	if len(entries) == 0 {
 		return nil, fmt.Errorf("'%s' have to come with a file\n", HOST_COMMAND)
 	}
 
-	if _, err := os.Stat(*file); os.IsNotExist(err) {
-		return nil, fmt.Errorf("%s: no such file or directory", *file)
+	for _, entry := range entries {
+		if _, err := os.Stat(entry); os.IsNotExist(err) {
+			return nil, fmt.Errorf("%s: no such file or directory", entry)
+		}
 	}
 
 	var hostConf string
@@ -103,19 +111,18 @@ func getSendConfig(file, addr, host, port *string) (*FlagConfig, error) {
 	}
 
 	return &FlagConfig{
-		Mode:     HOST_COMMAND,
-		FilePath: *file,
-		Address:  addrConf,
-		Host:     hostConf,
-		Port:     portConf,
+		Network: "tcp",
+		Mode:    HOST_COMMAND,
+		Entries: entries,
+		Addr: addrConf,
+		Host:    hostConf,
+		Port:    portConf,
 	}, nil
 }
 
 // Get the configurations for a receive command
-func getReceiveConfig(addr, host, port *string) (*FlagConfig, error) {
-	var hostConf string
-	var portConf string
-	var addrConf string
+func getReceiveConfig(addr, host, port, receiveDir *string) (*FlagConfig, error) {
+	var hostConf, portConf, addrConf, receiveDirConf string
 	var err error
 
 	if (isEmptyString(*host) || isEmptyString(*port)) && isEmptyString(*addr) {
@@ -134,11 +141,17 @@ func getReceiveConfig(addr, host, port *string) (*FlagConfig, error) {
 		addrConf = GetAddrFromHostPort(hostConf, portConf)
 	}
 
+	if !isEmptyString(*receiveDir) {
+		receiveDirConf = *receiveDir
+	}
+
 	return &FlagConfig{
-		Mode:    CONNECT_COMMAND,
-		Address: addrConf,
-		Host:    hostConf,
-		Port:    portConf,
+		Network:    "tcp",
+		Mode:       CONNECT_COMMAND,
+		Addr:    addrConf,
+		Host:       hostConf,
+		Port:       portConf,
+		ReceiveDir: receiveDirConf,
 	}, err
 }
 
@@ -169,7 +182,7 @@ func appUsage() {
 	intro := `lnkr (linker) is a simple file transfer program.
 
 Usage:
-	lnkr <command> [command flags]`
+	lnkr <command> [command flags] <FILES>`
 
 	fmt.Fprintln(os.Stderr, intro)
 	fmt.Fprintln(os.Stderr, "\nCommands:")
