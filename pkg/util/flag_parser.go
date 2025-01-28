@@ -13,7 +13,7 @@ import (
 
 type FlagConfig struct {
 	Mode, Addr, Host, Port, Network, ReceiveDir string
-	Entries                                        []string
+	Entries                                     []string
 }
 
 const (
@@ -114,7 +114,7 @@ func getSendConfig(sendCmd *flag.FlagSet, addr, host, port *string) (*FlagConfig
 		Network: "tcp",
 		Mode:    HOST_COMMAND,
 		Entries: entries,
-		Addr: addrConf,
+		Addr:    addrConf,
 		Host:    hostConf,
 		Port:    portConf,
 	}, nil
@@ -148,7 +148,7 @@ func getReceiveConfig(addr, host, port, receiveDir *string) (*FlagConfig, error)
 	return &FlagConfig{
 		Network:    "tcp",
 		Mode:       CONNECT_COMMAND,
-		Addr:    addrConf,
+		Addr:       addrConf,
 		Host:       hostConf,
 		Port:       portConf,
 		ReceiveDir: receiveDirConf,

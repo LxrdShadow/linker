@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
+	"path/filepath"
 
 	"github.com/LxrdShadow/linker/internal/config"
 	"github.com/LxrdShadow/linker/internal/protocol"
@@ -21,14 +23,14 @@ type Sender struct {
 	Entries []string
 }
 
-// Creates a new sender
+// Creates a new sender object
 func NewSender(config *util.FlagConfig) *Sender {
 	sender := &Sender{
 		Connection: &Connection{
 			Host:    config.Host,
 			Port:    config.Port,
 			Network: config.Network,
-			Addr: config.Addr,
+			Addr:    config.Addr,
 		},
 		Entries: config.Entries,
 	}
@@ -52,16 +54,16 @@ func (s *Sender) Listen() error {
 			continue
 		}
 
-		go s.HandleConnection(conn)
+		go s.handleConnection(conn)
 	}
 }
 
-func (s *Sender) HandleConnection(conn net.Conn) error {
+func (s *Sender) handleConnection(conn net.Conn) error {
 	fmt.Println("Connected with", conn.RemoteAddr().String())
 	fmt.Println()
 	defer conn.Close()
 
-	err := s.SendNumEntries(conn)
+	err := s.sendNumEntries(conn)
 
 	for _, entry := range s.Entries {
 		info, err := os.Stat(entry)
@@ -71,9 +73,10 @@ func (s *Sender) HandleConnection(conn net.Conn) error {
 		}
 
 		if info.IsDir() {
-			// TODO: Handle Directory Send
+			// TODO: Handle Sending Directories
+			err = s.sendDirectory(conn, entry)
 		} else {
-			err = s.SendSingleFile(conn, entry)
+			err = s.sendSingleFile(conn, entry)
 		}
 
 		if err != nil {
@@ -96,7 +99,7 @@ func (s *Sender) HandleConnection(conn net.Conn) error {
 }
 
 // Send the number of files for the client to receive
-func (s *Sender) SendNumEntries(conn net.Conn) error {
+func (s *Sender) sendNumEntries(conn net.Conn) error {
 	numEntriesBuff := make([]byte, 1)
 	binary.PutUvarint(numEntriesBuff, uint64(len(s.Entries)))
 	conn.Write(numEntriesBuff)
@@ -115,24 +118,53 @@ func (s *Sender) SendNumEntries(conn net.Conn) error {
 }
 
 // Send the single file specified in the app's flags
-func (s *Sender) SendSingleFile(conn net.Conn, filepath string) error {
-	file, err := os.OpenFile(filepath, os.O_RDONLY, 0755)
+func (s *Sender) sendDirectory(conn net.Conn, dir string) error {
+	baseDir := filepath.Dir(filepath.Clean(dir))
+	err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("failed to open %s: %w", filepath.Base(path), err)
+		}
+
+		header, err := protocol.PrepareFileHeader(file, baseDir)
+		if err != nil {
+			return fmt.Errorf("failed to get file header: %w", err)
+		}
+
+		fmt.Printf("Header: %+v\n", header)
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send directory: %s: %w", dir, err)
+	}
+
+	return nil
+}
+
+// Send one file specified as argument
+func (s *Sender) sendSingleFile(conn net.Conn, filepath string) error {
+	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w\n", err)
 	}
 	defer file.Close()
 
-	header, err := protocol.PrepareFileHeader(file)
+	header, err := protocol.PrepareFileHeader(file, "")
 	if err != nil {
 		return fmt.Errorf("failed to get file header: %w", err)
 	}
 
-	err = s.SendHeader(conn, header)
+	err = s.sendHeader(conn, header)
 	if err != nil {
 		return fmt.Errorf("failed to send header: %w", err)
 	}
 
-	err = s.SendFileByChunks(conn, file, header)
+	err = s.sendFileByChunks(conn, file, header)
 	if err != nil {
 		return fmt.Errorf("failed to send file: %w", err)
 	}
@@ -140,7 +172,7 @@ func (s *Sender) SendSingleFile(conn net.Conn, filepath string) error {
 	return nil
 }
 
-func (s *Sender) SendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
+func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
 	chunk := new(protocol.Chunk)
 	dataBuffer := make([]byte, config.DATA_MAX_SIZE)
 
@@ -156,7 +188,7 @@ func (s *Sender) SendFileByChunks(conn net.Conn, file *os.File, header *protocol
 		chunk.DataLength = uint64(n)
 		chunk.Data = dataBuffer
 
-		s.SendChunk(conn, chunk)
+		s.sendChunk(conn, chunk)
 
 		bar.AppendUpdate(uint64(n))
 	}
@@ -167,7 +199,7 @@ func (s *Sender) SendFileByChunks(conn net.Conn, file *os.File, header *protocol
 }
 
 // Send the header for one file
-func (s *Sender) SendHeader(conn net.Conn, header *protocol.Header) error {
+func (s *Sender) sendHeader(conn net.Conn, header *protocol.Header) error {
 	headerBuffer, err := header.Serialize()
 	if err != nil {
 		return fmt.Errorf("failed to serialize header: %w", err)
@@ -189,7 +221,7 @@ func (s *Sender) SendHeader(conn net.Conn, header *protocol.Header) error {
 }
 
 // Send one chunk of data
-func (s *Sender) SendChunk(conn net.Conn, chunk *protocol.Chunk) error {
+func (s *Sender) sendChunk(conn net.Conn, chunk *protocol.Chunk) error {
 	ack := make([]byte, 1)
 	chunkBuffer, err := chunk.Serialize()
 	if err != nil {
@@ -213,7 +245,7 @@ func (s *Sender) SendChunk(conn net.Conn, chunk *protocol.Chunk) error {
 	return nil
 }
 
-func (s *Sender) SendHello(conn net.Conn) {
+func (s *Sender) sendHello(conn net.Conn) {
 	defer conn.Close()
 	fmt.Println("Connected with:", conn.RemoteAddr().String())
 	response := make([]byte, 100)

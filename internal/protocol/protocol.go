@@ -28,13 +28,22 @@ type Chunk struct {
 }
 
 // Prepare the header with the informations about the file and the protocol
-func PrepareFileHeader(file *os.File) (*Header, error) {
+func PrepareFileHeader(file *os.File, baseDir string) (*Header, error) {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get file info: %w\n", err)
 	}
 	size := fileInfo.Size()
-	name := filepath.Base(file.Name())
+	var name string
+
+	if baseDir == "" {
+		name = filepath.Base(file.Name())
+	} else {
+		name, err = filepath.Rel(baseDir, file.Name())
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get file relative path: %w\n", err)
+		}
+	}
 
 	header := &Header{
 		Version:        config.PROTOCOL_VERSION,
