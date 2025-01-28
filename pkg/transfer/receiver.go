@@ -43,17 +43,24 @@ func (r *Receiver) Connect() error {
 	}
 	defer conn.Close()
 
-	numEntries, err := r.readNumEntries(conn)
+	transferHeader, err := r.getTransferHeader(conn)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println()
 	// Loop over the number of entries sent by the server
-	for range numEntries {
-		err = r.handleIncomingData(conn, r.ReceiveDir)
+	for i := range transferHeader.Reps {
+		if transferHeader.IsDir[i] {
+			// TODO: Receive a directory
+			fmt.Println("Directory")
+		} else {
+			fmt.Println("File")
+			err = r.receiveSingleFile(conn, r.ReceiveDir)
+		}
+
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to handle request: %s\n", err)
+			log.Errorf("failed to handle request: %v\n", err)
 			continue
 		}
 	}
@@ -81,8 +88,8 @@ func (r *Receiver) readNumEntries(conn net.Conn) (uint8, error) {
 	return uint8(numEntries), nil
 }
 
-func (r *Receiver) handleIncomingData(conn net.Conn, receiveDir string) error {
-	header, err := r.getHeader(conn)
+func (r *Receiver) receiveSingleFile(conn net.Conn, receiveDir string) error {
+	header, err := r.getFileHeader(conn)
 	if err != nil {
 		return err
 	}
@@ -148,8 +155,32 @@ func (r *Receiver) receiveFileByChunks(conn net.Conn, file *os.File, header *pro
 	return nil
 }
 
-func (r *Receiver) getHeader(conn net.Conn) (*protocol.Header, error) {
-	headerBuffer := make([]byte, config.HEADER_MAX_SIZE)
+func (r *Receiver) getTransferHeader(conn net.Conn) (*protocol.TransferHeader, error) {
+	headerBuffer := make([]byte, config.FILE_HEADER_MAX_SIZE)
+
+	_, err := conn.Read(headerBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read header: %w\n", err)
+	}
+
+	header, err := protocol.DeserializeTransferHeader(headerBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w\n", err)
+	}
+
+	if header.Version != config.PROTOCOL_VERSION {
+		return nil, fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, config.PROTOCOL_VERSION)
+	}
+
+	if _, err := conn.Write([]byte{1}); err != nil {
+		return nil, fmt.Errorf("failed to send acknowledgment: %w", err)
+	}
+
+	return header, nil
+}
+
+func (r *Receiver) getFileHeader(conn net.Conn) (*protocol.Header, error) {
+	headerBuffer := make([]byte, config.FILE_HEADER_MAX_SIZE)
 
 	_, err := conn.Read(headerBuffer)
 	if err != nil {

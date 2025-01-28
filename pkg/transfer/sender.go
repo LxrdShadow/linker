@@ -1,7 +1,6 @@
 package transfer
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -63,20 +62,19 @@ func (s *Sender) handleConnection(conn net.Conn) error {
 	fmt.Println()
 	defer conn.Close()
 
-	err := s.sendNumEntries(conn)
+	transferHeader, err := protocol.PrepareTransferHeader(s.Entries)
+	if err != nil {
+		return fmt.Errorf("failed to prepare transfer header: %w", err)
+	}
 
-	for _, entry := range s.Entries {
-		info, err := os.Stat(entry)
-		if err != nil {
-			log.Errorf("failed to send %s: %s", err.Error())
-			continue
-		}
+	// TODO: Send the transfer header instead of the number of entries
+	err = s.sendPacket(conn, transferHeader)
 
-		if info.IsDir() {
-			// TODO: Handle Sending Directories
+	for i, entry := range s.Entries {
+		if transferHeader.IsDir[i] {
 			err = s.sendDirectory(conn, entry)
 		} else {
-			err = s.sendSingleFile(conn, entry)
+			err = s.sendSingleFile(conn, entry, "")
 		}
 
 		if err != nil {
@@ -98,44 +96,16 @@ func (s *Sender) handleConnection(conn net.Conn) error {
 	return nil
 }
 
-// Send the number of files for the client to receive
-func (s *Sender) sendNumEntries(conn net.Conn) error {
-	numEntriesBuff := make([]byte, 1)
-	binary.PutUvarint(numEntriesBuff, uint64(len(s.Entries)))
-	conn.Write(numEntriesBuff)
-
-	ack := make([]byte, 1)
-	_, err := conn.Read(ack)
-	if err != nil && errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to receive acknowledgment: %w", err)
-	}
-
-	if ack[0] != 1 {
-		return fmt.Errorf("invalid acknowledgment received")
-	}
-
-	return nil
-}
-
 // Send the single file specified in the app's flags
 func (s *Sender) sendDirectory(conn net.Conn, dir string) error {
 	baseDir := filepath.Dir(filepath.Clean(dir))
+
 	err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
 		}
 
-		file, err := os.Open(path)
-		if err != nil {
-			return fmt.Errorf("failed to open %s: %w", filepath.Base(path), err)
-		}
-
-		header, err := protocol.PrepareFileHeader(file, baseDir)
-		if err != nil {
-			return fmt.Errorf("failed to get file header: %w", err)
-		}
-
-		fmt.Printf("Header: %+v\n", header)
+		s.sendSingleFile(conn, path, baseDir)
 
 		return nil
 	})
@@ -147,19 +117,19 @@ func (s *Sender) sendDirectory(conn net.Conn, dir string) error {
 }
 
 // Send one file specified as argument
-func (s *Sender) sendSingleFile(conn net.Conn, filepath string) error {
+func (s *Sender) sendSingleFile(conn net.Conn, filepath, baseDir string) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w\n", err)
 	}
 	defer file.Close()
 
-	header, err := protocol.PrepareFileHeader(file, "")
+	header, err := protocol.PrepareFileHeader(file, baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to get file header: %w", err)
 	}
 
-	err = s.sendHeader(conn, header)
+	err = s.sendPacket(conn, header)
 	if err != nil {
 		return fmt.Errorf("failed to send header: %w", err)
 	}
@@ -188,7 +158,7 @@ func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol
 		chunk.DataLength = uint64(n)
 		chunk.Data = dataBuffer
 
-		s.sendChunk(conn, chunk)
+		s.sendPacket(conn, chunk)
 
 		bar.AppendUpdate(uint64(n))
 	}
@@ -198,41 +168,16 @@ func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol
 	return nil
 }
 
-// Send the header for one file
-func (s *Sender) sendHeader(conn net.Conn, header *protocol.Header) error {
-	headerBuffer, err := header.Serialize()
+// Send a packet (it could be a header or a chunk of data)
+func (s *Sender) sendPacket(conn net.Conn, packet protocol.Packet) error {
+	packetBuffer, err := packet.Serialize()
 	if err != nil {
-		return fmt.Errorf("failed to serialize header: %w", err)
+		return fmt.Errorf("failed to serialize packet: %w", err)
 	}
 
-	conn.Write(headerBuffer)
+	conn.Write(packetBuffer)
 
 	ack := make([]byte, 1)
-	_, err = conn.Read(ack)
-	if err != nil && errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to receive acknowledgment: %w", err)
-	}
-
-	if ack[0] != 1 {
-		return fmt.Errorf("invalid acknowledgment received")
-	}
-
-	return nil
-}
-
-// Send one chunk of data
-func (s *Sender) sendChunk(conn net.Conn, chunk *protocol.Chunk) error {
-	ack := make([]byte, 1)
-	chunkBuffer, err := chunk.Serialize()
-	if err != nil {
-		return fmt.Errorf("failed to serialize chunk %d: %w", chunk.SequenceNumber, err)
-	}
-
-	_, err = conn.Write(chunkBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to write chunk %d: %w", chunk.SequenceNumber, err)
-	}
-
 	_, err = conn.Read(ack)
 	if err != nil && errors.Is(err, io.EOF) {
 		return fmt.Errorf("failed to receive acknowledgment: %w", err)
