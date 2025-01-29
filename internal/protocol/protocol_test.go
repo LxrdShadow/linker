@@ -18,11 +18,7 @@ func TestPrepareFileHeader(t *testing.T) {
 	defer os.Remove(filename)
 
 	t.Run("prepare the headers for a test file", func(t *testing.T) {
-		header, _ := PrepareFileHeader(file)
-
-		if header.Version != config.PROTOCOL_VERSION {
-			t.Errorf("Version mismatch: got %d want %d", header.Version, config.PROTOCOL_VERSION)
-		}
+		header, _ := PrepareFileHeader(file, "")
 
 		if header.FileNameLength != 9 {
 			t.Errorf("Wrong length: got %d want %d", header.FileNameLength, 9)
@@ -48,8 +44,7 @@ func TestPrepareFileHeader(t *testing.T) {
 }
 
 func TestSerializeHeader(t *testing.T) {
-	header := &Header{
-		Version:        config.PROTOCOL_VERSION,
+	header := &FileHeader{
 		ChunkSize:      1024,
 		Reps:           10,
 		FileSize:       1024 * 10,

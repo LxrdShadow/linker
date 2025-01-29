@@ -1,7 +1,6 @@
 package transfer
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -52,10 +51,8 @@ func (r *Receiver) Connect() error {
 	// Loop over the number of entries sent by the server
 	for i := range transferHeader.Reps {
 		if transferHeader.IsDir[i] {
-			// TODO: Receive a directory
-			fmt.Println("Directory")
+			err = r.receiveDirectory(conn, r.ReceiveDir)
 		} else {
-			fmt.Println("File")
 			err = r.receiveSingleFile(conn, r.ReceiveDir)
 		}
 
@@ -72,20 +69,20 @@ func (r *Receiver) Connect() error {
 	return nil
 }
 
-func (r *Receiver) readNumEntries(conn net.Conn) (uint8, error) {
-	numEntriesBuff := make([]byte, 1)
-	_, err := conn.Read(numEntriesBuff)
+func (r *Receiver) receiveDirectory(conn net.Conn, receiveDir string) error {
+	header, err := r.getDirHeader(conn)
 	if err != nil {
-		return 0, fmt.Errorf("Failed to read the number of files: %w\n", err)
+		return err
 	}
 
-	numEntries, _ := binary.Uvarint(numEntriesBuff)
-
-	if _, err := conn.Write([]byte{1}); err != nil {
-		return 0, fmt.Errorf("failed to send acknowledgment: %w", err)
+	for range header.Reps {
+		err = r.receiveSingleFile(conn, receiveDir)
+		if err != nil {
+			return err
+		}
 	}
 
-	return uint8(numEntries), nil
+	return nil
 }
 
 func (r *Receiver) receiveSingleFile(conn net.Conn, receiveDir string) error {
@@ -106,15 +103,17 @@ func (r *Receiver) receiveSingleFile(conn net.Conn, receiveDir string) error {
 }
 
 func (r *Receiver) createDestFile(dir, filename string) (*os.File, error) {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.Mkdir(dir, 0755)
+	path := filepath.Join(dir, filepath.Dir(filename))
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		err = os.MkdirAll(path, 0755)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create directory: %w\n", err)
 		}
 	}
 
 	var file *os.File
-	filePath := filepath.Join(dir, filename)
+	filePath := filepath.Join(path, filepath.Base(filename))
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		file, err = os.Create(filePath)
@@ -131,7 +130,7 @@ func (r *Receiver) createDestFile(dir, filename string) (*os.File, error) {
 	return file, nil
 }
 
-func (r *Receiver) receiveFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
+func (r *Receiver) receiveFileByChunks(conn net.Conn, file *os.File, header *protocol.FileHeader) error {
 	unit, denom := util.ByteDecodeUnit(header.FileSize)
 
 	bar := progress.NewProgressBar(header.FileSize, '=', denom, header.FileName, unit)
@@ -168,8 +167,24 @@ func (r *Receiver) getTransferHeader(conn net.Conn) (*protocol.TransferHeader, e
 		return nil, fmt.Errorf("failed to deserialize header: %w\n", err)
 	}
 
-	if header.Version != config.PROTOCOL_VERSION {
-		return nil, fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, config.PROTOCOL_VERSION)
+	if _, err := conn.Write([]byte{1}); err != nil {
+		return nil, fmt.Errorf("failed to send acknowledgment: %w", err)
+	}
+
+	return header, nil
+}
+
+func (r *Receiver) getDirHeader(conn net.Conn) (*protocol.DirHeader, error) {
+	headerBuffer := make([]byte, config.DIR_HEADER_SIZE)
+
+	_, err := conn.Read(headerBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read header: %w\n", err)
+	}
+
+	header, err := protocol.DeserializeDirHeader(headerBuffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w\n", err)
 	}
 
 	if _, err := conn.Write([]byte{1}); err != nil {
@@ -179,7 +194,7 @@ func (r *Receiver) getTransferHeader(conn net.Conn) (*protocol.TransferHeader, e
 	return header, nil
 }
 
-func (r *Receiver) getFileHeader(conn net.Conn) (*protocol.Header, error) {
+func (r *Receiver) getFileHeader(conn net.Conn) (*protocol.FileHeader, error) {
 	headerBuffer := make([]byte, config.FILE_HEADER_MAX_SIZE)
 
 	_, err := conn.Read(headerBuffer)
@@ -190,10 +205,6 @@ func (r *Receiver) getFileHeader(conn net.Conn) (*protocol.Header, error) {
 	header, err := protocol.DeserializeHeader(headerBuffer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deserialize header: %w\n", err)
-	}
-
-	if header.Version != config.PROTOCOL_VERSION {
-		return nil, fmt.Errorf("protocol version mismatch: got v%d protocol while using v%d protocol\n", header.Version, config.PROTOCOL_VERSION)
 	}
 
 	if _, err := conn.Write([]byte{1}); err != nil {

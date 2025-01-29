@@ -99,8 +99,24 @@ func (s *Sender) handleConnection(conn net.Conn) error {
 // Send the single file specified in the app's flags
 func (s *Sender) sendDirectory(conn net.Conn, dir string) error {
 	baseDir := filepath.Dir(filepath.Clean(dir))
+	var reps int
 
 	err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
+		reps++
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send directory: %s: %w", dir, err)
+	}
+
+	header := protocol.PrepareDirHeader(reps)
+	err = s.sendPacket(conn, header)
+
+	err = filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
 		}
@@ -142,7 +158,7 @@ func (s *Sender) sendSingleFile(conn net.Conn, filepath, baseDir string) error {
 	return nil
 }
 
-func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol.Header) error {
+func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol.FileHeader) error {
 	chunk := new(protocol.Chunk)
 	dataBuffer := make([]byte, config.DATA_MAX_SIZE)
 

@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/LxrdShadow/linker/internal/config"
@@ -122,7 +123,7 @@ func getSendConfig(sendCmd *flag.FlagSet, addr, host, port *string) (*FlagConfig
 
 // Get the configurations for a receive command
 func getReceiveConfig(addr, host, port, receiveDir *string) (*FlagConfig, error) {
-	var hostConf, portConf, addrConf, receiveDirConf string
+	var hostConf, portConf, addrConf string
 	var err error
 
 	if (isEmptyString(*host) || isEmptyString(*port)) && isEmptyString(*addr) {
@@ -141,17 +142,13 @@ func getReceiveConfig(addr, host, port, receiveDir *string) (*FlagConfig, error)
 		addrConf = GetAddrFromHostPort(hostConf, portConf)
 	}
 
-	if !isEmptyString(*receiveDir) {
-		receiveDirConf = *receiveDir
-	}
-
 	return &FlagConfig{
 		Network:    "tcp",
 		Mode:       CONNECT_COMMAND,
 		Addr:       addrConf,
 		Host:       hostConf,
 		Port:       portConf,
-		ReceiveDir: receiveDirConf,
+		ReceiveDir: filepath.Clean(*receiveDir),
 	}, err
 }
 
