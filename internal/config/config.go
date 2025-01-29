@@ -1,7 +1,7 @@
 package config
 
 const (
-	RECEIVE_DIRECTORY = "./received/"
+	RECEIVE_DIRECTORY = "."
 )
 
 const (
