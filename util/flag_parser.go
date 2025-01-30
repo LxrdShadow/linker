@@ -32,7 +32,6 @@ func ParseFlags(args []string) (*FlagConfig, error) {
 	flag.Parse()
 
 	sendCmd := flag.NewFlagSet(HOST_COMMAND, flag.ExitOnError)
-	// sendFile := sendCmd.String("file", "", "Path of the file to send")
 	sendAddr := sendCmd.String("addr", "", "Address for the server (host:port)")
 	sendHost := sendCmd.String("host", "", "Host IP for the server")
 	sendPort := sendCmd.String("port", "", "Port for the server")
@@ -176,7 +175,7 @@ func isEmptyString(str string) bool {
 
 // Custom usage message for the app
 func appUsage() {
-	intro := `lnkr (linker) is a simple file transfer program.
+	intro := `linker is a simple file transfer program.
 
 Usage:
 	lnkr <command> [command flags] <FILES>`

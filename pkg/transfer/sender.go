@@ -13,7 +13,6 @@ import (
 	"github.com/LxrdShadow/linker/internal/protocol"
 	"github.com/LxrdShadow/linker/pkg/color"
 	"github.com/LxrdShadow/linker/pkg/log"
-	"github.com/LxrdShadow/linker/pkg/progress"
 	"github.com/LxrdShadow/linker/pkg/util"
 )
 
@@ -44,7 +43,7 @@ func (s *Sender) Listen() error {
 		return fmt.Errorf("failed to listen on %s: %w", color.Sprint(color.RED, s.Addr), err)
 	}
 
-	fmt.Printf("Listening on: %s\n", color.Sprint(color.GREEN, s.Addr))
+	fmt.Printf("Listening on: %s\n", color.Sprint(color.BLUE, s.Addr))
 
 	for {
 		conn, err := listener.Accept()
@@ -58,7 +57,7 @@ func (s *Sender) Listen() error {
 }
 
 func (s *Sender) handleConnection(conn net.Conn) error {
-	fmt.Println("Connected with", conn.RemoteAddr().String())
+	fmt.Println("Connected with", color.Sprint(color.YELLOW, conn.RemoteAddr().String()))
 	fmt.Println()
 	defer conn.Close()
 
@@ -91,6 +90,7 @@ func (s *Sender) handleConnection(conn net.Conn) error {
 
 	log.Successf("%s\n", string(response))
 	fmt.Println()
+	fmt.Println("Closing connection with with", color.Sprint(color.YELLOW, conn.RemoteAddr().String()))
 	fmt.Printf("Listening on: %s\n", color.Sprint(color.GREEN, s.Addr))
 
 	return nil
@@ -162,11 +162,6 @@ func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol
 	chunk := new(protocol.Chunk)
 	dataBuffer := make([]byte, config.DATA_MAX_SIZE)
 
-	unit, denom := util.ByteDecodeUnit(header.FileSize)
-
-	bar := progress.NewProgressBar(header.FileSize, '=', denom, header.FileName, unit)
-	bar.Render()
-
 	for i := 0; i < int(header.Reps); i++ {
 		n, _ := file.ReadAt(dataBuffer, int64(i*len(dataBuffer)))
 
@@ -175,11 +170,7 @@ func (s *Sender) sendFileByChunks(conn net.Conn, file *os.File, header *protocol
 		chunk.Data = dataBuffer
 
 		s.sendPacket(conn, chunk)
-
-		bar.AppendUpdate(uint64(n))
 	}
-	bar.Finish()
-	fmt.Println()
 
 	return nil
 }
