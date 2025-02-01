@@ -59,14 +59,6 @@ This will launch the server and display a message **Listening on [your-ip-addres
 ```
 By default, it saves received files in the current directory.
 
-### **Progress Reporting**
-During the transfer, the receiver will display:
-```scss
-example.txt [#########>                 ] 35%   0.35MB/1MB  13MB/s
-```
-
----
-
 ## Planned Features
 
 - ✅ Multi-file support
