@@ -8,7 +8,7 @@ A fast and efficient terminal-based file transfer utility written in **Go**. Sup
 - [Screenshots](#screenshots)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Planned Features](#planned_features)
+- [Planned Features](#planned-features)
 - [Contributing](#contributing)
 - [License](#license)
 - [Author](#author)
