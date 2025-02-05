@@ -26,7 +26,10 @@ A fast and efficient terminal-based file transfer utility written in **Go**. Sup
 
 ## Screenshots
 
-
+**Sender**
+![Sender Screenshot](https://github.com/user-attachments/assets/cd64f4d4-7a54-4d93-929b-6033f0c8e5b2)
+**Receiver**
+![Receiver screenshot](https://github.com/user-attachments/assets/91240eb2-4a7c-4e8a-944c-a611172c8bb3)
 
 ---
 
