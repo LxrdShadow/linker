@@ -1,4 +1,4 @@
-# ** Linker **
+# Linker
 
 A fast and efficient terminal-based file transfer utility written in **Go**. Supports sending and receiving files or entire directories over a **TCP** connection with chunked transfer, progress reporting, and error handling.
 
