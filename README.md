@@ -70,6 +70,7 @@ By default, it saves received files in the current directory.
 - ⏳ Secure transfer (TLS encryption)
 - ⏳ Authentication (password-protected transfers)
 - ⏳ Terminal User Interface (TUI)
+- ⏳ Local web interface
 
 ---
 
