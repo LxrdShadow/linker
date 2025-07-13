@@ -66,6 +66,7 @@ By default, it saves received files in the current directory.
 
 - ✅ Multi-file support
 - ✅ Directory transfer support
+- ⏳ A proper installation process
 - ⏳ Compression before sending
 - ⏳ Secure transfer (TLS encryption)
 - ⏳ Authentication (password-protected transfers)
